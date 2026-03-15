@@ -15,7 +15,7 @@ type FieldShellProps = {
 function FieldShell({ children, label, hint, className = "" }: FieldShellProps) {
   return (
     <label className={`flex min-w-0 flex-col gap-2 ${className}`}>
-      <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
+      <span className="block max-w-full text-[0.72rem] leading-snug uppercase tracking-[0.32em] text-[var(--ink-faint)] [overflow-wrap:anywhere]">
         {label}
       </span>
       {children}

@@ -1999,30 +1999,18 @@ export function RosterApp({
                   />
                   <SavableSelectField
                     label={lt("Origin Culture", "Культура походження")}
-                    hint={lt(
-                      "Descriptive in v1. Use this to mark Firstcome or Zenithian roots.",
-                      "У v1 це описове поле. Використовуйте його, щоб позначити коріння Першоприбулих або зенітців.",
-                    )}
                     value={selectedCharacter.originCulture ?? ""}
                     options={originCultureOptions}
                     onCommit={(value) => commitField("originCulture", value)}
                   />
                   <SavableSelectField
                     label={lt("Home System", "Домашня система")}
-                    hint={lt(
-                      "Descriptive in v1. Coriolis-born characters belong to the Kua system.",
-                      "У v1 це описове поле. Персонажі, народжені на Коріолісі, належать до системи Куа.",
-                    )}
                     value={selectedCharacter.originSystem ?? ""}
                     options={originSystemOptions}
                     onCommit={(value) => commitField("originSystem", value)}
                   />
                   <SavableSelectField
                     label={lt("Upbringing", "Виховання")}
-                    hint={lt(
-                      "This is the only field that drives starter-budget guidance in v1.",
-                      "У v1 лише це поле впливає на підказки стартового бюджету.",
-                    )}
                     value={selectedCharacter.upbringing ?? ""}
                     options={upbringingOptions}
                     onCommit={(value) => commitField("upbringing", value)}
@@ -3226,7 +3214,7 @@ function WeaponCard({
           onCommit={(value) => onCommit("range", value)}
         />
       </div>
-      <div className="mt-4 grid gap-4 md:grid-cols-[140px_minmax(0,1fr)]">
+      <div className="mt-4 grid gap-4 md:grid-cols-[minmax(180px,220px)_minmax(0,1fr)]">
         <SavableNumberField
           label={lt("Reloads", "Перезаряджання")}
           min={0}
