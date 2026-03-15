@@ -7,8 +7,10 @@ import {
 } from "@/lib/coriolis-rules";
 import {
   findBestCharactersByField,
+  findBestCharactersBySkill,
   findBestCharactersForRole,
   formatBestMatchNames,
+  getSkillDicePool,
   hasRoleTraining,
   scoreCharacterForRole,
 } from "@/lib/team-readouts";
@@ -104,7 +106,27 @@ describe("team readout helpers", () => {
     const farid = makeCharacter("char-1", { name: "Farid", technology: 0 });
     const layla = makeCharacter("char-2", { name: "Layla", technology: 0 });
 
-    expect(findBestCharactersByField([farid, layla], "technology", 1)).toBeNull();
+    expect(findBestCharactersBySkill([farid, layla], "technology")).toBeNull();
+  });
+
+  it("ranks best skill specialists by linked dice pool instead of raw skill only", () => {
+    const instinctiveScout = makeCharacter("char-1", {
+      name: "Instinctive Scout",
+      wits: 5,
+      observation: 1,
+    });
+    const trainedSpotter = makeCharacter("char-2", {
+      name: "Trained Spotter",
+      wits: 2,
+      observation: 3,
+    });
+
+    expect(getSkillDicePool(instinctiveScout, "observation")).toBe(6);
+    expect(getSkillDicePool(trainedSpotter, "observation")).toBe(5);
+    expect(
+      findBestCharactersBySkill([instinctiveScout, trainedSpotter], "observation")
+        ?.winners.map((character) => character.name),
+    ).toEqual(["Instinctive Scout"]);
   });
 
   it("requires relevant role training before a character can be called the best fit", () => {

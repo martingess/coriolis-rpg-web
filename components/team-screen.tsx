@@ -23,6 +23,7 @@ import {
 } from "@/lib/team-types";
 import {
   findBestCharactersByField,
+  findBestCharactersBySkill,
   findBestCharactersForRole,
   formatBestMatchNames,
 } from "@/lib/team-readouts";
@@ -56,7 +57,15 @@ const attributeSpotlightFields: Array<{
 ];
 
 const skillSpotlightFields: Array<{
-  field: keyof CharacterRecord;
+  field: Extract<
+    keyof CharacterRecord,
+    | "observation"
+    | "pilot"
+    | "manipulation"
+    | "command"
+    | "technology"
+    | "rangedCombat"
+  >;
   label: string;
 }> = [
   { field: "observation", label: "Observation" },
@@ -326,7 +335,7 @@ export function TeamScreen({
               </p>
               <div className="mt-4 grid gap-3">
                 {skillSpotlightFields.map((entry) => {
-                  const bestMatch = findBestCharactersByField(characters, entry.field, 1);
+                  const bestMatch = findBestCharactersBySkill(characters, entry.field);
 
                   return (
                     <div key={entry.field} className="team-readout-row">

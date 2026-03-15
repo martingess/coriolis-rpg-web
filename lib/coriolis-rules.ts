@@ -30,7 +30,7 @@ export const starterGuidanceLabels = {
   attributePoints: "Attribute points",
   skillPoints: "Skill points",
   groupTalents: "Group talents",
-  conceptTalents: "Concept talents",
+  conceptTalents: "Personal talents",
   iconTalents: "Icon talents",
   totalTalents: "Total talents",
   baseReputation: "Base upbringing reputation",
@@ -171,14 +171,14 @@ export function getEncumbranceCapacityUnits(strength: number) {
 }
 
 export function getEncumbranceUsedUnits(
-  items: Array<{ encumbranceUnits: number; isTiny: boolean }>,
+  items: Array<{ encumbranceUnits: number; isTiny: boolean; quantity?: number }>,
 ) {
   return items.reduce((total, item) => {
     if (item.isTiny) {
       return total;
     }
 
-    return total + Math.max(0, item.encumbranceUnits);
+    return total + Math.max(0, item.encumbranceUnits) * Math.max(1, item.quantity ?? 1);
   }, 0);
 }
 

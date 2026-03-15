@@ -65,12 +65,12 @@ describe("coriolis derived rules", () => {
   it("tracks encumbrance in half-row units", () => {
     expect(
       getEncumbranceUsedUnits([
-        { encumbranceUnits: 2, isTiny: false },
-        { encumbranceUnits: 1, isTiny: false },
-        { encumbranceUnits: 4, isTiny: false },
-        { encumbranceUnits: 0, isTiny: true },
+        { encumbranceUnits: 2, isTiny: false, quantity: 2 },
+        { encumbranceUnits: 1, isTiny: false, quantity: 1 },
+        { encumbranceUnits: 4, isTiny: false, quantity: 1 },
+        { encumbranceUnits: 0, isTiny: true, quantity: 5 },
       ]),
-    ).toBe(7);
+    ).toBe(9);
 
     expect(getEncumbranceCapacityUnits(3)).toBe(12);
     expect(formatEncumbranceUnits(1)).toBe("Light");

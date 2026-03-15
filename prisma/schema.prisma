@@ -305,6 +305,7 @@ model CharacterGearItem {
   name             String    @default("")
   bonus            String    @default("")
   comment          String    @default("")
+  quantity         Int       @default(1)
   encumbranceUnits Int       @default(2)
   isTiny           Boolean   @default(false)
   createdAt        DateTime  @default(now())

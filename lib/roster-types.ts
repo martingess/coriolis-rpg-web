@@ -57,6 +57,7 @@ export type CharacterGearItemRecord = {
   name: string;
   bonus: string;
   comment: string;
+  quantity: number;
   encumbranceUnits: number;
   isTiny: boolean;
 };

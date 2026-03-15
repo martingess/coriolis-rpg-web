@@ -200,6 +200,7 @@ export function serializeCharacter(character: CharacterWithRelations): Character
       name: item.name,
       bonus: item.bonus,
       comment: item.comment,
+      quantity: item.quantity,
       encumbranceUnits: item.encumbranceUnits,
       isTiny: item.isTiny,
     })),
@@ -809,6 +810,7 @@ export async function addInventoryPreset(
         name: preset.label,
         bonus: preset.bonus,
         comment: preset.comment,
+        quantity: 1,
         encumbranceUnits: preset.encumbranceUnits,
         isTiny: kind === "tiny",
       },
@@ -914,6 +916,9 @@ export async function updateRepeaterField(
           ...(field === "name" ? { name: String(value) } : {}),
           ...(field === "bonus" ? { bonus: String(value) } : {}),
           ...(field === "comment" ? { comment: String(value) } : {}),
+          ...(field === "quantity"
+            ? { quantity: clampNumber(parseIntegerValue(value), 1, 99) }
+            : {}),
           ...(field === "encumbranceUnits"
             ? { encumbranceUnits: clampNumber(parseIntegerValue(value), 0, 20) }
             : {}),

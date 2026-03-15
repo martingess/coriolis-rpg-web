@@ -6,9 +6,52 @@ type WeightedRoleField = {
   weight: number;
 };
 
+type AttributeField = Extract<
+  keyof CharacterRecord,
+  "strength" | "agility" | "wits" | "empathy"
+>;
+type SkillField = Extract<
+  keyof CharacterRecord,
+  | "dexterity"
+  | "force"
+  | "infiltration"
+  | "manipulation"
+  | "meleeCombat"
+  | "observation"
+  | "rangedCombat"
+  | "survival"
+  | "command"
+  | "culture"
+  | "dataDjinn"
+  | "medicurgy"
+  | "mysticPowers"
+  | "pilot"
+  | "science"
+  | "technology"
+>;
+
 type BestCharacterMatch = {
   value: number;
   winners: CharacterRecord[];
+};
+
+const skillAttributeFields: Record<SkillField, AttributeField> = {
+  meleeCombat: "strength",
+  force: "strength",
+  dexterity: "agility",
+  infiltration: "agility",
+  rangedCombat: "agility",
+  pilot: "agility",
+  survival: "wits",
+  observation: "wits",
+  dataDjinn: "wits",
+  medicurgy: "wits",
+  science: "wits",
+  technology: "wits",
+  manipulation: "empathy",
+  command: "empathy",
+  culture: "empathy",
+  mysticPowers: "empathy",
 };
 
 const roleWeights: Record<TeamCrewRole, WeightedRoleField[]> = {
@@ -56,6 +99,16 @@ function getNumericFieldValue(character: CharacterRecord, field: keyof Character
   return Number(character[field] ?? 0);
 }
 
+export function getSkillDicePool(character: CharacterRecord, field: SkillField) {
+  const skillValue = getNumericFieldValue(character, field);
+
+  if (skillValue < 1) {
+    return null;
+  }
+
+  return skillValue + getNumericFieldValue(character, skillAttributeFields[field]);
+}
+
 export function findBestCharactersByField(
   characters: CharacterRecord[],
   field: keyof CharacterRecord,
@@ -77,6 +130,30 @@ export function findBestCharactersByField(
     value: bestValue,
     winners: characters.filter(
       (character) => getNumericFieldValue(character, field) === bestValue,
+    ),
+  };
+}
+
+export function findBestCharactersBySkill(
+  characters: CharacterRecord[],
+  field: SkillField,
+): BestCharacterMatch | null {
+  const trainedCharacters = characters.filter(
+    (character) => getSkillDicePool(character, field) !== null,
+  );
+
+  if (trainedCharacters.length === 0) {
+    return null;
+  }
+
+  const bestValue = trainedCharacters.reduce((highest, character) => {
+    return Math.max(highest, getSkillDicePool(character, field) ?? 0);
+  }, Number.NEGATIVE_INFINITY);
+
+  return {
+    value: bestValue,
+    winners: trainedCharacters.filter(
+      (character) => getSkillDicePool(character, field) === bestValue,
     ),
   };
 }

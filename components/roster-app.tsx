@@ -1,6 +1,13 @@
 "use client";
 
-import { useDeferredValue, useEffect, useRef, useState, useTransition } from "react";
+import {
+  useDeferredValue,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 
 import {
   addInventoryPresetAction,
@@ -22,7 +29,6 @@ import {
   CounterTrack,
   SavableNumberField,
   SavableSelectField,
-  SegmentedValueField,
   SavableTextField,
   SectionCard,
 } from "@/components/field-controls";
@@ -81,62 +87,135 @@ type RosterAppProps = {
 
 const TEAM_VIEW_ID = "__team__";
 
-const attributeFields: Array<{
-  field: CharacterScalarField;
+type AttributeField = Extract<
+  CharacterScalarField,
+  "strength" | "agility" | "wits" | "empathy"
+>;
+type SkillKind = "general" | "advanced";
+
+const attributeSkillSections = [
+  {
+    field: "strength",
+    label: "Strength",
+    hint: "Raw power and physique",
+    skills: [
+      { field: "meleeCombat", label: "Melee Combat", kind: "general" },
+      { field: "force", label: "Force", kind: "general" },
+    ],
+  },
+  {
+    field: "agility",
+    label: "Agility",
+    hint: "Control, reflexes, motion",
+    skills: [
+      { field: "dexterity", label: "Dexterity", kind: "general" },
+      { field: "infiltration", label: "Infiltration", kind: "general" },
+      { field: "rangedCombat", label: "Ranged Combat", kind: "general" },
+      { field: "pilot", label: "Pilot", kind: "advanced" },
+    ],
+  },
+  {
+    field: "wits",
+    label: "Wits",
+    hint: "Instinct, analysis, awareness",
+    skills: [
+      { field: "survival", label: "Survival", kind: "general" },
+      { field: "observation", label: "Observation", kind: "general" },
+      { field: "dataDjinn", label: "Data Djinn", kind: "advanced" },
+      { field: "medicurgy", label: "Medicurgy", kind: "advanced" },
+      { field: "science", label: "Science", kind: "advanced" },
+      { field: "technology", label: "Technology", kind: "advanced" },
+    ],
+  },
+  {
+    field: "empathy",
+    label: "Empathy",
+    hint: "Presence, empathy, persuasion",
+    skills: [
+      { field: "manipulation", label: "Manipulation", kind: "general" },
+      { field: "command", label: "Command", kind: "advanced" },
+      { field: "culture", label: "Culture", kind: "advanced" },
+      { field: "mysticPowers", label: "Mystic Powers", kind: "advanced" },
+    ],
+  },
+] as const satisfies ReadonlyArray<{
+  field: AttributeField;
   hint: string;
   label: string;
-}> = [
-  { field: "strength", label: "Strength", hint: "Raw power and physique" },
-  { field: "agility", label: "Agility", hint: "Control, reflexes, motion" },
-  { field: "wits", label: "Wits", hint: "Instinct, analysis, awareness" },
-  { field: "empathy", label: "Empathy", hint: "Presence, empathy, persuasion" },
-];
+  skills: ReadonlyArray<{
+    field: CharacterSkillField;
+    kind: SkillKind;
+    label: string;
+  }>;
+}>;
 
-const generalSkills: Array<{ field: CharacterSkillField; label: string }> = [
-  { field: "dexterity", label: "Dexterity" },
-  { field: "force", label: "Force" },
-  { field: "infiltration", label: "Infiltration" },
-  { field: "manipulation", label: "Manipulation" },
-  { field: "meleeCombat", label: "Melee Combat" },
-  { field: "observation", label: "Observation" },
-  { field: "rangedCombat", label: "Ranged Combat" },
-  { field: "survival", label: "Survival" },
-];
-
-const advancedSkills: Array<{ field: CharacterSkillField; label: string }> = [
-  { field: "command", label: "Command" },
-  { field: "culture", label: "Culture" },
-  { field: "dataDjinn", label: "Data Djinn" },
-  { field: "medicurgy", label: "Medicurgy" },
-  { field: "mysticPowers", label: "Mystic Powers" },
-  { field: "pilot", label: "Pilot" },
-  { field: "science", label: "Science" },
-  { field: "technology", label: "Technology" },
-];
-
-const skillGroups = [
-  { id: "general", title: "General Skills", skills: generalSkills },
-  { id: "advanced", title: "Advanced Skills", skills: advancedSkills },
-] as const;
-
-type SkillGroupDefinition = (typeof skillGroups)[number];
-
-function splitSkillsByValue(
-  skills: readonly SkillGroupDefinition["skills"][number][],
-  character: CharacterRecord,
+function describeSkillDicePool(
+  attributeValue: number,
+  skillValue: number,
+  kind: SkillKind,
 ) {
-  const activeSkills = skills.filter((skill) => (character[skill.field] as number) > 0);
-  const foldedSkills = skills.filter((skill) => (character[skill.field] as number) === 0);
+  if (kind === "advanced" && skillValue === 0) {
+    return "Needs 1 rank before it can be rolled.";
+  }
 
-  return {
-    activeSkills,
-    foldedSkills,
-  };
+  if (skillValue === 0) {
+    return `Base chance ${attributeValue} dice from the attribute alone.`;
+  }
+
+  return `Pool ${attributeValue + skillValue} dice: ${attributeValue} attribute + ${skillValue} skill.`;
+}
+
+type ValuePipsProps = {
+  label: string;
+  max: number;
+  min?: number;
+  onCommit: (value: number) => Promise<void> | void;
+  size?: "sm" | "md";
+  value: number;
+};
+
+function ValuePips({
+  label,
+  max,
+  min = 0,
+  onCommit,
+  size = "sm",
+  value,
+}: ValuePipsProps) {
+  return (
+    <div className="flex flex-wrap gap-2" role="group" aria-label={label}>
+      {Array.from({ length: max }, (_, index) => {
+        const pipValue = index + 1;
+        const isActive = pipValue <= value;
+        const nextValue =
+          value === pipValue ? Math.max(min, pipValue - 1) : pipValue;
+
+        return (
+          <button
+            key={`${label}-${pipValue}`}
+            type="button"
+            className={`coriolis-counter ${size === "md" ? "coriolis-counter--md" : ""} ${
+              isActive ? "coriolis-counter--active" : ""
+            }`}
+            aria-label={
+              value === pipValue
+                ? `${label}: decrease to ${nextValue}`
+                : `${label}: set to ${pipValue}`
+            }
+            aria-pressed={isActive}
+            onClick={() => {
+              void onCommit(nextValue);
+            }}
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 const talentSourceOptions = [
   { value: "group", label: "Group" },
-  { value: "concept", label: "Concept" },
+  { value: "concept", label: "Personal" },
   { value: "icon", label: "Icon" },
   { value: "other", label: "Other" },
 ];
@@ -200,10 +279,9 @@ const allQuickNavSections = [
   { id: "identity", label: "Identity", eyebrow: "Front Sheet" },
   { id: "appearance", label: "Appearance", eyebrow: "Presence" },
   { id: "conditions", label: "Conditions", eyebrow: "Trauma" },
-  { id: "attributes", label: "Attributes", eyebrow: "Primary Stats" },
+  { id: "stats", label: "Stats", eyebrow: "Rulebook Matrix" },
   { id: "starter-rules", label: "Starter Rules", eyebrow: "Creation Guide" },
   { id: "relationships", label: "Relationships", eyebrow: "Other PCs" },
-  { id: "skills", label: "Skills", eyebrow: "General & Advanced" },
   { id: "talents", label: "Talents", eyebrow: "Edge" },
   { id: "armor", label: "Armor", eyebrow: "Protection" },
   { id: "weapons", label: "Weapons", eyebrow: "Loadout" },
@@ -231,9 +309,22 @@ type HeaderQuickNavProps<TSectionId extends string> = {
 };
 
 const birrFormatter = new Intl.NumberFormat("en-US");
+const MIN_BIRR = 0;
+const MAX_BIRR = 999999;
+
+type PendingRemoval = {
+  confirmLabel: string;
+  description: string;
+  onConfirm: () => void;
+  title: string;
+};
 
 function formatBirr(value: number) {
   return `${birrFormatter.format(value)} birr`;
+}
+
+function clampBirr(value: number) {
+  return Math.min(Math.max(value, MIN_BIRR), MAX_BIRR);
 }
 
 function HeaderQuickNav<TSectionId extends string>({
@@ -291,6 +382,207 @@ function HeaderQuickNav<TSectionId extends string>({
   );
 }
 
+function ConfirmRemovalModal({
+  pendingRemoval,
+  onCancel,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+  pendingRemoval: PendingRemoval | null;
+}) {
+  const titleId = useId();
+  const descriptionId = useId();
+
+  useEffect(() => {
+    if (!pendingRemoval) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCancel();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onCancel, pendingRemoval]);
+
+  if (!pendingRemoval) {
+    return null;
+  }
+
+  return (
+    <div
+      className="coriolis-modal coriolis-modal--confirm"
+      onClick={onCancel}
+      role="presentation"
+    >
+      <div
+        className="coriolis-modal__dialog coriolis-modal__dialog--confirm"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="coriolis-modal__header">
+          <div className="coriolis-modal__copy">
+            <p className="coriolis-modal__eyebrow">Confirm Removal</p>
+            <h2 id={titleId} className="coriolis-modal__title">
+              {pendingRemoval.title}
+            </h2>
+            <p id={descriptionId} className="coriolis-modal__description">
+              {pendingRemoval.description}
+            </p>
+          </div>
+        </div>
+        <div className="coriolis-modal__actions">
+          <button type="button" className="coriolis-chip" onClick={onCancel}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="coriolis-chip coriolis-chip--danger"
+            onClick={onConfirm}
+          >
+            {pendingRemoval.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BirrAdjustmentModal({
+  currentValue,
+  isOpen,
+  onCancel,
+  onConfirm,
+}: {
+  currentValue: number;
+  isOpen: boolean;
+  onCancel: () => void;
+  onConfirm: (delta: number) => void;
+}) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const inputId = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [draft, setDraft] = useState("0");
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCancel();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onCancel]);
+
+  if (!isOpen) {
+    return null;
+  }
+
+  const parsedDelta = Number.parseInt(draft, 10);
+  const delta = Number.isFinite(parsedDelta) ? parsedDelta : 0;
+  const nextValue = clampBirr(currentValue + delta);
+  const isUnchanged = nextValue === currentValue;
+
+  return (
+    <div className="coriolis-modal coriolis-modal--confirm" onClick={onCancel} role="presentation">
+      <form
+        className="coriolis-modal__dialog coriolis-modal__dialog--confirm"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        onClick={(event) => event.stopPropagation()}
+        onSubmit={(event) => {
+          event.preventDefault();
+
+          if (isUnchanged) {
+            return;
+          }
+
+          onConfirm(delta);
+        }}
+      >
+        <div className="coriolis-modal__header">
+          <div className="coriolis-modal__copy">
+            <p className="coriolis-modal__eyebrow">Birr Adjustment</p>
+            <h2 id={titleId} className="coriolis-modal__title">
+              Adjust Birr
+            </h2>
+            <p id={descriptionId} className="coriolis-modal__description">
+              Enter a positive number to add birr or a negative number to subtract it.
+            </p>
+          </div>
+        </div>
+        <div className="coriolis-modal__body">
+          <label htmlFor={inputId} className="flex flex-col gap-2">
+            <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
+              Amount to add or subtract
+            </span>
+            <input
+              id={inputId}
+              ref={inputRef}
+              className="coriolis-input text-center"
+              type="number"
+              inputMode="numeric"
+              step={1}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+            />
+          </label>
+          <div className="mt-4 grid gap-3 rounded-[1.2rem] border border-[var(--line-soft)] bg-[var(--panel-soft)] p-4 text-sm text-[var(--ink-muted)]">
+            <div className="flex items-center justify-between gap-3">
+              <span>Current total</span>
+              <strong className="text-[var(--paper)]">{formatBirr(currentValue)}</strong>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span>Resulting total</span>
+              <strong className="text-[var(--paper)]">{formatBirr(nextValue)}</strong>
+            </div>
+          </div>
+        </div>
+        <div className="coriolis-modal__actions">
+          <button type="button" className="coriolis-chip" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="submit" className="coriolis-chip" disabled={isUnchanged}>
+            Apply
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function describeVariance(actual: number, target: number) {
   if (actual === target) {
     return "Aligned with the starter target.";
@@ -316,7 +608,6 @@ export function RosterApp({
     "Autosaves on blur. Shared crew data and character sheets stay in sync.",
   );
   const [isStarterRulesHidden, setIsStarterRulesHidden] = useState(false);
-  const [areAllSkillsVisible, setAreAllSkillsVisible] = useState(false);
   const [activeSectionId, setActiveSectionId] = useState<QuickNavSectionId>(
     allQuickNavSections[0].id,
   );
@@ -324,6 +615,8 @@ export function RosterApp({
     useState<TeamQuickNavSectionId>(teamQuickNavSections[0].id);
   const [isPending, startTransition] = useTransition();
   const [isUploading, setIsUploading] = useState(false);
+  const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval | null>(null);
+  const [isBirrAdjustmentOpen, setIsBirrAdjustmentOpen] = useState(false);
   const latestIssuedSkillRequestIds = useRef<Record<string, number>>({});
   const latestConfirmedSkillRequestIds = useRef<Record<string, number>>({});
 
@@ -353,32 +646,6 @@ export function RosterApp({
           ),
       )
     : [];
-  const skillGroupsForDisplay = selectedCharacter
-    ? skillGroups
-        .map((group) => {
-          const { activeSkills, foldedSkills } = splitSkillsByValue(
-            group.skills,
-            selectedCharacter,
-          );
-          const visibleSkills = areAllSkillsVisible
-            ? [...activeSkills, ...foldedSkills]
-            : activeSkills;
-
-          return {
-            ...group,
-            visibleSkills,
-            foldedSkills,
-          };
-        })
-        .filter((group) => group.visibleSkills.length > 0)
-    : [];
-  const hiddenSkillCount = selectedCharacter
-    ? skillGroups.reduce(
-        (total, group) =>
-          total + splitSkillsByValue(group.skills, selectedCharacter).foldedSkills.length,
-        0,
-      )
-    : 0;
 
   useEffect(() => {
     setPendingSkillEdits((currentPendingEdits) =>
@@ -401,10 +668,6 @@ export function RosterApp({
 
   useEffect(() => {
     setActiveSectionId(allQuickNavSections[0].id);
-  }, [selectedCharacterId]);
-
-  useEffect(() => {
-    setAreAllSkillsVisible(false);
   }, [selectedCharacterId]);
 
   useEffect(() => {
@@ -472,6 +735,14 @@ export function RosterApp({
 
     return () => observer.disconnect();
   }, [isStarterRulesHidden, selectedCharacterId]);
+
+  useEffect(() => {
+    if (selectedCharacter) {
+      return;
+    }
+
+    setIsBirrAdjustmentOpen(false);
+  }, [selectedCharacter]);
 
   useEffect(() => {
     if (!isTeamSelected) {
@@ -555,6 +826,105 @@ export function RosterApp({
       } catch (error) {
         setNotice(error instanceof Error ? error.message : "Something went wrong.");
       }
+    });
+  }
+
+  function requestRemoval(removal: PendingRemoval) {
+    setPendingRemoval(removal);
+  }
+
+  function closeRemovalDialog() {
+    setPendingRemoval(null);
+  }
+
+  function openBirrAdjustmentModal() {
+    if (!selectedCharacter) {
+      return;
+    }
+
+    setIsBirrAdjustmentOpen(true);
+  }
+
+  function closeBirrAdjustmentModal() {
+    setIsBirrAdjustmentOpen(false);
+  }
+
+  function applyBirrAdjustment(delta: number) {
+    if (!selectedCharacter) {
+      return;
+    }
+
+    const nextValue = clampBirr(selectedCharacter.birr + delta);
+    setIsBirrAdjustmentOpen(false);
+
+    if (nextValue === selectedCharacter.birr) {
+      return;
+    }
+
+    commitField("birr", nextValue);
+  }
+
+  function confirmRemoval() {
+    if (!pendingRemoval) {
+      return;
+    }
+
+    const onConfirm = pendingRemoval.onConfirm;
+    setPendingRemoval(null);
+    onConfirm();
+  }
+
+  function requestCharacterDeletion(character: CharacterRecord) {
+    requestRemoval({
+      confirmLabel: "Delete Sheet",
+      description: `This permanently removes ${character.name} and all of the sheet's relationships, talents, weapons, gear, and contacts.`,
+      onConfirm: () => {
+        runTask(async () => {
+          const remaining = await deleteCharacterAction(character.id);
+          setCharacters((currentCharacters) =>
+            mergeCharacterListWithPreservedSkills(currentCharacters, remaining),
+          );
+          setSelectedPanelId(remaining[0]?.id ?? TEAM_VIEW_ID);
+        }, "Sheet removed.");
+      },
+      title: `Delete ${character.name}?`,
+    });
+  }
+
+  function requestCharacterRepeaterRemoval(
+    kind: RepeaterKind,
+    id: string,
+    entryLabel: string,
+    successMessage: string,
+  ) {
+    requestRemoval({
+      confirmLabel: "Remove",
+      description: `This permanently removes the ${entryLabel.toLowerCase()} from ${selectedCharacter?.name ?? "the current sheet"}.`,
+      onConfirm: () => {
+        runTask(async () => {
+          const updated = await deleteRepeaterItemAction({ kind, id });
+          patchCharacter(updated);
+        }, successMessage);
+      },
+      title: `Remove ${entryLabel}?`,
+    });
+  }
+
+  function requestTeamRepeaterRemoval(
+    kind: Exclude<TeamRepeaterKind, "crewPosition">,
+    id: string,
+    entryLabel: string,
+  ) {
+    requestRemoval({
+      confirmLabel: "Remove",
+      description: `This permanently removes the ${entryLabel.toLowerCase()} from the shared team ledger.`,
+      onConfirm: () => {
+        runTask(async () => {
+          const updated = await deleteTeamRepeaterItemAction({ kind, id });
+          patchTeam(updated);
+        }, "Team ledger updated.");
+      },
+      title: `Remove ${entryLabel}?`,
     });
   }
 
@@ -927,21 +1297,7 @@ export function RosterApp({
                       return;
                     }
 
-                    const confirmed = window.confirm(
-                      `Delete ${selectedCharacter.name}?`,
-                    );
-
-                    if (!confirmed) {
-                      return;
-                    }
-
-                    runTask(async () => {
-                      const remaining = await deleteCharacterAction(selectedCharacter.id);
-                      setCharacters((currentCharacters) =>
-                        mergeCharacterListWithPreservedSkills(currentCharacters, remaining),
-                      );
-                      setSelectedPanelId(remaining[0]?.id ?? TEAM_VIEW_ID);
-                    }, "Sheet removed.");
+                    requestCharacterDeletion(selectedCharacter);
                   }}
                 >
                   Delete
@@ -1041,10 +1397,14 @@ export function RosterApp({
                 commitTeamRepeater(kind as TeamRepeaterKind, id, field, value)
               }
               onRemoveRepeater={(kind, id) => {
-                runTask(async () => {
-                  const updated = await deleteTeamRepeaterItemAction({ kind, id });
-                  patchTeam(updated);
-                }, "Team ledger updated.");
+                const entryLabels: Record<Exclude<TeamRepeaterKind, "crewPosition">, string> = {
+                  factionTie: "Faction Tie",
+                  knownFace: "Known Face",
+                  note: "Note",
+                  storyBeat: "Story Beat",
+                };
+
+                requestTeamRepeaterRemoval(kind, id, entryLabels[kind]);
               }}
               onKnownFacePortraitUpload={async (knownFaceId, file) => {
                 await uploadKnownFacePortrait(knownFaceId, file);
@@ -1261,19 +1621,137 @@ export function RosterApp({
               </div>
             </SectionCard>
 
-            <SectionCard id="attributes" title="Attributes" eyebrow="Primary Stats">
-              <div className="grid gap-4 sm:grid-cols-2">
-                {attributeFields.map((attribute) => (
-                  <SavableNumberField
-                    key={attribute.field}
-                    label={attribute.label}
-                    hint={attribute.hint}
-                    min={1}
-                    max={5}
-                    value={selectedCharacter[attribute.field] as number}
-                    onCommit={(value) => commitField(attribute.field, value)}
-                  />
-                ))}
+            <SectionCard
+              id="stats"
+              title="Attributes + Skills"
+              eyebrow="Rulebook Matrix"
+              className="lg:col-span-2"
+            >
+              <div className="grid gap-5">
+                <div className="rounded-[1.35rem] border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.05)] px-4 py-4">
+                  <p className="font-display text-lg uppercase tracking-[0.14em] text-[var(--paper)]">
+                    Roll linked stats together
+                  </p>
+                  <p className="mt-2 text-sm text-[var(--ink-muted)]">
+                    The rulebook ties every skill to one attribute. General skills can roll on
+                    base attribute alone, while advanced skills need at least 1 rank before they
+                    come online.
+                  </p>
+                </div>
+
+                <div className="grid items-start gap-4 xl:grid-cols-2">
+                  {attributeSkillSections.map((section) => {
+                    const attributeValue = selectedCharacter[section.field] as number;
+
+                    return (
+                      <article key={section.field} className="coriolis-stat-cluster">
+                        <div className="coriolis-stat-cluster__header">
+                          <div className="space-y-2">
+                            <div>
+                              <p className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
+                                Attribute
+                              </p>
+                              <h3 className="font-display text-2xl uppercase tracking-[0.12em] text-[var(--paper)]">
+                                {section.label}
+                              </h3>
+                            </div>
+                            <p className="max-w-[32rem] text-sm text-[var(--ink-muted)]">
+                              {section.hint}
+                            </p>
+                          </div>
+                          <div className="coriolis-stat-cluster__value">
+                            <span className="text-[0.68rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
+                              Base
+                            </span>
+                            <strong className="font-display text-3xl uppercase tracking-[0.08em] text-[var(--paper)]">
+                              {attributeValue}
+                            </strong>
+                          </div>
+                        </div>
+
+                        <div className="rounded-[1.2rem] border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.04)] px-4 py-4">
+                          <div className="mb-3 flex items-center justify-between gap-3">
+                            <p className="text-[0.72rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
+                              Attribute value
+                            </p>
+                            <p className="text-sm text-[var(--ink-muted)]">{attributeValue}/5</p>
+                          </div>
+                          <ValuePips
+                            label={`${section.label} attribute`}
+                            max={5}
+                            min={1}
+                            size="md"
+                            value={attributeValue}
+                            onCommit={(value) => commitField(section.field, value)}
+                          />
+                        </div>
+
+                        <div className="grid gap-3">
+                          {section.skills.map((skill) => {
+                            const skillValue = selectedCharacter[skill.field] as number;
+                            const canRoll = skill.kind === "general" || skillValue > 0;
+                            const dicePool = canRoll ? attributeValue + skillValue : null;
+
+                            return (
+                              <div key={skill.field} className="coriolis-linked-skill">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0 space-y-2">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="font-display text-lg uppercase tracking-[0.08em] text-[var(--paper)]">
+                                        {skill.label}
+                                      </p>
+                                      <span
+                                        className={`coriolis-skill-chip ${
+                                          skill.kind === "advanced"
+                                            ? "coriolis-skill-chip--advanced"
+                                            : ""
+                                        }`}
+                                      >
+                                        {skill.kind}
+                                      </span>
+                                      {canRoll ? null : (
+                                        <span className="coriolis-skill-chip coriolis-skill-chip--locked">
+                                          Locked
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-sm text-[var(--ink-muted)]">
+                                      {describeSkillDicePool(
+                                        attributeValue,
+                                        skillValue,
+                                        skill.kind,
+                                      )}
+                                    </p>
+                                  </div>
+                                  <div className="shrink-0 text-right">
+                                    <p className="text-[0.68rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
+                                      Skill
+                                    </p>
+                                    <p className="font-display text-2xl uppercase tracking-[0.08em] text-[var(--paper)]">
+                                      {skillValue}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                  <ValuePips
+                                    label={skill.label}
+                                    max={5}
+                                    value={skillValue}
+                                    onCommit={(value) => commitField(skill.field, value)}
+                                  />
+                                  <div className="rounded-full border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.06)] px-3 py-1 text-[0.72rem] uppercase tracking-[0.24em] text-[var(--ink)]">
+                                    {dicePool === null ? "Needs training" : `${dicePool} dice`}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
               </div>
             </SectionCard>
 
@@ -1473,13 +1951,12 @@ export function RosterApp({
                         type="button"
                         className="text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)]"
                         onClick={() => {
-                          runTask(async () => {
-                            const updated = await deleteRepeaterItemAction({
-                              kind: "relationship",
-                              id: relationship.id,
-                            });
-                            patchCharacter(updated);
-                          }, "Relationship removed.");
+                          requestCharacterRepeaterRemoval(
+                            "relationship",
+                            relationship.id,
+                            "Relationship",
+                            "Relationship removed.",
+                          );
                         }}
                       >
                         Remove
@@ -1518,53 +1995,6 @@ export function RosterApp({
             </SectionCard>
 
             <SectionCard
-              id="skills"
-              title="Skills"
-              eyebrow="General & Advanced"
-              className="lg:col-span-2"
-            >
-              <div className="grid gap-5 lg:grid-cols-2">
-                {skillGroupsForDisplay.map((group) => (
-                  <div key={group.id} className="grid gap-4">
-                    <div className="space-y-1 px-1">
-                      <p className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
-                        {group.title}
-                      </p>
-                    </div>
-                    <div className="grid gap-4">
-                      {group.visibleSkills.map((skill) => (
-                        <SegmentedValueField
-                          key={skill.field}
-                          label={skill.label}
-                          max={5}
-                          value={selectedCharacter[skill.field] as number}
-                          onCommit={(value) => commitField(skill.field, value)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {hiddenSkillCount > 0 ? (
-                <div className="mt-5 flex flex-col items-start gap-3 border-t border-[var(--line-soft)] pt-5">
-                  {skillGroupsForDisplay.length === 0 ? (
-                    <p className="text-sm text-[var(--ink-muted)]">
-                      All skills are currently folded because they are at 0.
-                    </p>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="coriolis-chip"
-                    aria-expanded={areAllSkillsVisible}
-                    onClick={() => setAreAllSkillsVisible((current) => !current)}
-                  >
-                    {areAllSkillsVisible ? "Show fewer" : "Show all"}
-                  </button>
-                </div>
-              ) : null}
-            </SectionCard>
-
-            <SectionCard
               id="talents"
               title="Talents"
               eyebrow="Edge"
@@ -1597,13 +2027,12 @@ export function RosterApp({
                         type="button"
                         className="text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)]"
                         onClick={() => {
-                          runTask(async () => {
-                            const updated = await deleteRepeaterItemAction({
-                              kind: "talent",
-                              id: talent.id,
-                            });
-                            patchCharacter(updated);
-                          }, "Talent removed.");
+                          requestCharacterRepeaterRemoval(
+                            "talent",
+                            talent.id,
+                            "Talent",
+                            "Talent removed.",
+                          );
                         }}
                       >
                         Remove
@@ -1693,13 +2122,12 @@ export function RosterApp({
                     weapon={weapon}
                     onCommit={(field, value) => commitRepeater("weapon", weapon.id, field, value)}
                     onDelete={() => {
-                      runTask(async () => {
-                        const updated = await deleteRepeaterItemAction({
-                          kind: "weapon",
-                          id: weapon.id,
-                        });
-                        patchCharacter(updated);
-                      }, "Weapon removed.");
+                      requestCharacterRepeaterRemoval(
+                        "weapon",
+                        weapon.id,
+                        "Weapon",
+                        "Weapon removed.",
+                      );
                     }}
                   />
                 ))}
@@ -1741,30 +2169,40 @@ export function RosterApp({
                   >
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <span className="text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)]">
-                        {formatEncumbranceUnits(item.encumbranceUnits)}
+                        {item.quantity > 1
+                          ? `${formatEncumbranceUnits(item.encumbranceUnits * item.quantity)} total (${item.quantity} x ${formatEncumbranceUnits(item.encumbranceUnits)})`
+                          : formatEncumbranceUnits(item.encumbranceUnits)}
                       </span>
                       <button
                         type="button"
                         className="text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)]"
                         onClick={() => {
-                          runTask(async () => {
-                            const updated = await deleteRepeaterItemAction({
-                              kind: "gear",
-                              id: item.id,
-                            });
-                            patchCharacter(updated);
-                          }, "Gear removed.");
+                          requestCharacterRepeaterRemoval(
+                            "gear",
+                            item.id,
+                            "Gear Item",
+                            "Gear removed.",
+                          );
                         }}
                       >
                         Remove
                       </button>
                     </div>
-                    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px_180px]">
-                      <SavableTextField
-                        label="Item"
-                        value={item.name}
+                    <SavableTextField
+                      label="Item"
+                      value={item.name}
+                      onCommit={(value) =>
+                        commitRepeater("gear", item.id, "name", value)
+                      }
+                    />
+                    <div className="mt-4 grid gap-4 md:grid-cols-[140px_160px_180px]">
+                      <SavableNumberField
+                        label="Quantity"
+                        min={1}
+                        max={99}
+                        value={item.quantity}
                         onCommit={(value) =>
-                          commitRepeater("gear", item.id, "name", value)
+                          commitRepeater("gear", item.id, "quantity", value)
                         }
                       />
                       <SavableTextField
@@ -1775,7 +2213,7 @@ export function RosterApp({
                         }
                       />
                       <SavableSelectField
-                        label="Load"
+                        label="Load Each"
                         value={String(item.encumbranceUnits)}
                         options={encumbrancePresets}
                         onCommit={(value) =>
@@ -1823,24 +2261,32 @@ export function RosterApp({
                         type="button"
                         className="text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)]"
                         onClick={() => {
-                          runTask(async () => {
-                            const updated = await deleteRepeaterItemAction({
-                              kind: "gear",
-                              id: item.id,
-                            });
-                            patchCharacter(updated);
-                          }, "Tiny item removed.");
+                          requestCharacterRepeaterRemoval(
+                            "gear",
+                            item.id,
+                            "Tiny Item",
+                            "Tiny item removed.",
+                          );
                         }}
                       >
                         Remove
                       </button>
                     </div>
-                    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
-                      <SavableTextField
-                        label="Item"
-                        value={item.name}
+                    <SavableTextField
+                      label="Item"
+                      value={item.name}
+                      onCommit={(value) =>
+                        commitRepeater("gear", item.id, "name", value)
+                      }
+                    />
+                    <div className="mt-4 grid gap-4 md:grid-cols-[140px_220px]">
+                      <SavableNumberField
+                        label="Quantity"
+                        min={1}
+                        max={99}
+                        value={item.quantity}
                         onCommit={(value) =>
-                          commitRepeater("gear", item.id, "name", value)
+                          commitRepeater("gear", item.id, "quantity", value)
                         }
                       />
                       <SavableTextField
@@ -1900,13 +2346,12 @@ export function RosterApp({
                         type="button"
                         className="text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)]"
                         onClick={() => {
-                          runTask(async () => {
-                            const updated = await deleteRepeaterItemAction({
-                              kind: "contact",
-                              id: contact.id,
-                            });
-                            patchCharacter(updated);
-                          }, "Contact removed.");
+                          requestCharacterRepeaterRemoval(
+                            "contact",
+                            contact.id,
+                            "Contact",
+                            "Contact removed.",
+                          );
                         }}
                       >
                         Remove
@@ -1973,9 +2418,19 @@ export function RosterApp({
               <div className="grid gap-4">
                 <SavableNumberField
                   label="Birr"
-                  min={0}
+                  hint="Edit directly or use Add to apply a positive or negative change."
+                  min={MIN_BIRR}
                   value={selectedCharacter.birr}
                   onCommit={(value) => commitField("birr", value)}
+                  action={
+                    <button
+                      type="button"
+                      className="coriolis-chip"
+                      onClick={openBirrAdjustmentModal}
+                    >
+                      Add
+                    </button>
+                  }
                 />
                 <SavableTextField
                   label="Notes"
@@ -2036,6 +2491,18 @@ export function RosterApp({
             setDrawerKind(null);
           }, "Inventory updated.");
         }}
+      />
+      <ConfirmRemovalModal
+        pendingRemoval={pendingRemoval}
+        onCancel={closeRemovalDialog}
+        onConfirm={confirmRemoval}
+      />
+      <BirrAdjustmentModal
+        key={`${selectedCharacter?.id ?? "none"}-${isBirrAdjustmentOpen ? "open" : "closed"}`}
+        currentValue={selectedCharacter?.birr ?? 0}
+        isOpen={isBirrAdjustmentOpen}
+        onCancel={closeBirrAdjustmentModal}
+        onConfirm={applyBirrAdjustment}
       />
     </div>
   );

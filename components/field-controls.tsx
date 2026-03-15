@@ -13,7 +13,7 @@ type FieldShellProps = {
 
 function FieldShell({ children, label, hint, className = "" }: FieldShellProps) {
   return (
-    <label className={`flex flex-col gap-2 ${className}`}>
+    <label className={`flex min-w-0 flex-col gap-2 ${className}`}>
       <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
         {label}
       </span>
@@ -89,6 +89,7 @@ export function SavableTextField({
 }
 
 type SavableNumberFieldProps = {
+  action?: ReactNode;
   className?: string;
   hint?: string;
   label: string;
@@ -100,6 +101,7 @@ type SavableNumberFieldProps = {
 };
 
 export function SavableNumberField({
+  action,
   className,
   hint,
   label,
@@ -129,19 +131,38 @@ export function SavableNumberField({
 
   return (
     <FieldShell label={label} hint={hint} className={className}>
-      <input
-        className="coriolis-input text-center"
-        type="number"
-        inputMode="numeric"
-        min={min}
-        max={max}
-        step={step}
-        value={draft}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={() => {
-          void handleCommit();
-        }}
-      />
+      {action ? (
+        <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+          <input
+            className="coriolis-input min-w-0 w-full text-center"
+            type="number"
+            inputMode="numeric"
+            min={min}
+            max={max}
+            step={step}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={() => {
+              void handleCommit();
+            }}
+          />
+          <div className="justify-self-start sm:justify-self-end">{action}</div>
+        </div>
+      ) : (
+        <input
+          className="coriolis-input min-w-0 w-full text-center"
+          type="number"
+          inputMode="numeric"
+          min={min}
+          max={max}
+          step={step}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => {
+            void handleCommit();
+          }}
+        />
+      )}
     </FieldShell>
   );
 }
