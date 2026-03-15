@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname, useRouter } from "next/navigation";
 import {
   useDeferredValue,
   useEffect,
@@ -66,6 +67,12 @@ import {
   originSystemValues,
   upbringingValues,
 } from "@/lib/roster-types";
+import {
+  TEAM_HREF,
+  TEAM_PANEL_ID,
+  getCharacterHref,
+  getPanelIdFromPathname,
+} from "@/lib/roster-routes";
 import type {
   CharacterConditionModifierRecord,
   CharacterRecord,
@@ -90,8 +97,6 @@ type RosterAppProps = {
   inventoryCatalog: InventoryPreset[];
   initialTeam: TeamRecord;
 };
-
-const TEAM_VIEW_ID = "__team__";
 
 type AttributeField = Extract<
   CharacterScalarField,
@@ -979,11 +984,12 @@ export function RosterApp({
   inventoryCatalog,
   initialTeam,
 }: RosterAppProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [characters, setCharacters] = useState(initialCharacters);
   const [pendingSkillEdits, setPendingSkillEdits] =
     useState<PendingOptimisticCharacterSkillEdits>({});
   const [team, setTeam] = useState(initialTeam);
-  const [selectedPanelId, setSelectedPanelId] = useState<string>(TEAM_VIEW_ID);
   const [drawerKind, setDrawerKind] = useState<InventoryKind | null>(null);
   const [notice, setNotice] = useState<string | null>(
     "Autosaves on blur. Shared crew data and character sheets stay in sync.",
@@ -1003,7 +1009,8 @@ export function RosterApp({
   const latestIssuedSkillRequestIds = useRef<Record<string, number>>({});
   const latestConfirmedSkillRequestIds = useRef<Record<string, number>>({});
 
-  const isTeamSelected = selectedPanelId === TEAM_VIEW_ID;
+  const selectedPanelId = getPanelIdFromPathname(pathname);
+  const isTeamSelected = selectedPanelId === TEAM_PANEL_ID;
   const visibleCharacters = characters.map((character) =>
     applyOptimisticSkillEdits(character, pendingSkillEdits[character.id]),
   );
@@ -1045,9 +1052,9 @@ export function RosterApp({
     }
 
     if (!selectedCharacter) {
-      setSelectedPanelId(characters[0]?.id ?? TEAM_VIEW_ID);
+      router.replace(characters[0] ? getCharacterHref(characters[0].id) : TEAM_HREF);
     }
-  }, [characters, isTeamSelected, selectedCharacter]);
+  }, [characters, isTeamSelected, router, selectedCharacter]);
 
   useEffect(() => {
     setActiveSectionId(allQuickNavSections[0].id);
@@ -1178,6 +1185,17 @@ export function RosterApp({
     return `${characterId}:${field}`;
   }
 
+  function navigateToPanel(panelId: string, mode: "push" | "replace" = "push") {
+    const href = panelId === TEAM_PANEL_ID ? TEAM_HREF : getCharacterHref(panelId);
+
+    if (mode === "replace") {
+      router.replace(href);
+      return;
+    }
+
+    router.push(href);
+  }
+
   function patchCharacter(updatedCharacter: CharacterRecord) {
     setCharacters((currentCharacters) => {
       const existingIndex = currentCharacters.findIndex(
@@ -1300,7 +1318,7 @@ export function RosterApp({
           setCharacters((currentCharacters) =>
             mergeCharacterListWithPreservedSkills(currentCharacters, remaining),
           );
-          setSelectedPanelId(remaining[0]?.id ?? TEAM_VIEW_ID);
+          navigateToPanel(remaining[0]?.id ?? TEAM_PANEL_ID, "replace");
         }, "Sheet removed.");
       },
       title: `Delete ${character.name}?`,
@@ -1670,7 +1688,7 @@ export function RosterApp({
                     runTask(async () => {
                       const created = await createCharacterAction();
                       setCharacters((currentCharacters) => [...currentCharacters, created]);
-                      setSelectedPanelId(created.id);
+                      navigateToPanel(created.id);
                     }, "New sheet opened.");
                   }}
                 >
@@ -1755,7 +1773,7 @@ export function RosterApp({
                     ? "border-[var(--gold)] bg-[color:rgba(201,160,80,0.18)] text-[var(--paper)]"
                     : "border-[var(--line-soft)] bg-[color:rgba(245,231,204,0.06)] text-[var(--ink-muted)] hover:border-[var(--line-strong)] hover:text-[var(--paper)]"
                 }`}
-                onClick={() => setSelectedPanelId(TEAM_VIEW_ID)}
+                onClick={() => navigateToPanel(TEAM_PANEL_ID)}
               >
                 Team
               </button>
@@ -1771,7 +1789,7 @@ export function RosterApp({
                         ? "border-[var(--gold)] bg-[color:rgba(201,160,80,0.18)] text-[var(--paper)]"
                         : "border-[var(--line-soft)] bg-[color:rgba(245,231,204,0.06)] text-[var(--ink-muted)] hover:border-[var(--line-strong)] hover:text-[var(--paper)]"
                     }`}
-                    onClick={() => setSelectedPanelId(character.id)}
+                    onClick={() => navigateToPanel(character.id)}
                   >
                     {character.name}
                   </button>
@@ -1813,7 +1831,7 @@ export function RosterApp({
             <TeamScreen
               team={team}
               characters={visibleCharacters}
-              onOpenCharacter={(characterId) => setSelectedPanelId(characterId)}
+              onOpenCharacter={(characterId) => navigateToPanel(characterId)}
               onUpdateField={(field, value) =>
                 commitTeamField(field as TeamScalarField, value)
               }
@@ -1847,7 +1865,7 @@ export function RosterApp({
                   const result = await promoteKnownFaceToCharacterAction(knownFaceId);
                   patchTeam(result.team);
                   patchCharacter(result.character);
-                  setSelectedPanelId(result.character.id);
+                  navigateToPanel(result.character.id);
                 }, "Known face promoted to crew.");
               }}
             />
@@ -2946,7 +2964,7 @@ export function RosterApp({
                 runTask(async () => {
                   const created = await createCharacterAction();
                   setCharacters([created]);
-                  setSelectedPanelId(created.id);
+                  navigateToPanel(created.id);
                 }, "New sheet opened.");
               }}
             >

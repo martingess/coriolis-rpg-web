@@ -8,6 +8,7 @@ const tinyPng = Buffer.from(
 test("mobile roster flow persists edits and inventory", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
+  await expect(page).toHaveURL(/\/team$/);
 
   await expect(
     page.getByRole("heading", { name: "Coriolis Dossier" }),
@@ -16,6 +17,7 @@ test("mobile roster flow persists edits and inventory", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Nassim Vale/i })).toBeVisible();
 
   await page.getByRole("button", { name: "New" }).click();
+  await expect(page).toHaveURL(/\/characters\/[^/]+$/);
 
   const nameField = page.getByLabel("Name").first();
   await nameField.fill("Layla Kassar");
@@ -99,7 +101,6 @@ test("mobile roster flow persists edits and inventory", async ({ page }) => {
   await expect(relationshipsSection.getByRole("button", { name: "Buddy" }).first()).toBeVisible();
 
   await page.reload();
-  await page.getByRole("button", { name: /Layla Kassar/i }).click();
   const persistedGearSection = page
     .getByRole("heading", { name: "Gear" })
     .locator("xpath=ancestor::section[1]");
@@ -126,6 +127,29 @@ test("mobile roster flow persists edits and inventory", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: /Layla Kassar/i }),
   ).toBeVisible();
+});
+
+test("route reflects the selected team or character page after reload", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 960 });
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/team$/);
+  await expect(page.getByRole("heading", { name: "Team Story" })).toBeVisible();
+
+  await page.getByRole("button", { name: /Sabah al-Malik/i }).click();
+  await expect(page).toHaveURL(/\/characters\/[^/]+$/);
+  await expect(page.getByLabel("Name").first()).toHaveValue("Sabah al-Malik");
+
+  await page.reload();
+  await expect(page).toHaveURL(/\/characters\/[^/]+$/);
+  await expect(page.getByLabel("Name").first()).toHaveValue("Sabah al-Malik");
+
+  await page.getByRole("button", { name: "Team" }).click();
+  await expect(page).toHaveURL(/\/team$/);
+  await expect(page.getByRole("heading", { name: "Team Story" })).toBeVisible();
+
+  await page.reload();
+  await expect(page).toHaveURL(/\/team$/);
+  await expect(page.getByRole("heading", { name: "Team Story" })).toBeVisible();
 });
 
 test("desktop layout keeps the full sheet readable", async ({ page }) => {

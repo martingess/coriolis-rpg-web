@@ -1,18 +1,7 @@
-import { RosterApp } from "@/components/roster-app";
-import { inventoryCatalog } from "@/lib/coriolis-presets";
-import { getRoster } from "@/lib/roster";
-import { getTeam } from "@/lib/team";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
+import { TEAM_HREF } from "@/lib/roster-routes";
 
-export default async function Home() {
-  const [characters, team] = await Promise.all([getRoster(), getTeam()]);
-
-  return (
-    <RosterApp
-      initialCharacters={characters}
-      inventoryCatalog={inventoryCatalog}
-      initialTeam={team}
-    />
-  );
+export default function Home() {
+  redirect(TEAM_HREF);
 }
