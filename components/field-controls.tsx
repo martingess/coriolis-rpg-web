@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 type CommitHandler<T> = (value: T) => Promise<void> | void;
 
@@ -248,6 +249,7 @@ export function SegmentedValueField({
   onCommit,
   value,
 }: SegmentedValueFieldProps) {
+  const { t } = useTranslation();
   const labelId = useId();
   const hintId = useId();
 
@@ -285,8 +287,8 @@ export function SegmentedValueField({
               }`}
               aria-label={
                 value === index + 1
-                  ? `${label}: decrease to ${index}`
-                  : `${label}: set to ${index + 1}`
+                  ? `${label}: ${t("controls.decreaseTo", { value: index })}`
+                  : `${label}: ${t("controls.setTo", { value: index + 1 })}`
               }
               aria-pressed={isActive}
               onClick={() => {

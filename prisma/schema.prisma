@@ -65,69 +65,69 @@ enum ConditionModifierTarget {
 }
 
 model Character {
-  id                String                  @id @default(cuid())
-  name              String
-  description       String                  @default("")
-  background        String                  @default("")
-  originCulture     OriginCulture?
-  originSystem      OriginSystem?
-  upbringing        Upbringing?
-  concept           String                  @default("")
-  groupConcept      String                  @default("")
-  icon              String                  @default("")
-  reputation        Int                     @default(0)
-  personalProblem   String                  @default("")
-  face              String                  @default("")
-  clothing          String                  @default("")
-  portraitPath      String?
-  portraitAsset     CharacterPortrait?
-  strength          Int                     @default(2)
-  agility           Int                     @default(2)
-  wits              Int                     @default(2)
-  empathy           Int                     @default(2)
-  maxHitPoints      Int                     @default(4)
-  currentHitPoints  Int                     @default(4)
-  maxMindPoints     Int                     @default(4)
-  currentMindPoints Int                     @default(4)
-  maxRadiation      Int                     @default(10)
-  radiation         Int                     @default(0)
-  experience        Int                     @default(0)
-  criticalInjuries  String                  @default("")
-  notes             String                  @default("")
-  myCabinDescription String                 @default("")
-  myCabinGear       String                  @default("")
-  myCabinOther      String                  @default("")
-  birr              Int                     @default(0)
-  armorName         String                  @default("")
-  armorRating       Int                     @default(0)
-  armorComment      String                  @default("")
-  dexterity         Int                     @default(0)
-  force             Int                     @default(0)
-  infiltration      Int                     @default(0)
-  manipulation      Int                     @default(0)
-  meleeCombat       Int                     @default(0)
-  observation       Int                     @default(0)
-  rangedCombat      Int                     @default(0)
-  survival          Int                     @default(0)
-  command           Int                     @default(0)
-  culture           Int                     @default(0)
-  dataDjinn         Int                     @default(0)
-  medicurgy         Int                     @default(0)
-  mysticPowers      Int                     @default(0)
-  pilot             Int                     @default(0)
-  science           Int                     @default(0)
-  technology        Int                     @default(0)
-  createdAt         DateTime                @default(now())
-  updatedAt         DateTime                @updatedAt
-  contacts          CharacterContact[]
-  gearItems         CharacterGearItem[]
-  primaryCrewRoles  TeamCrewPosition[]      @relation("PrimaryCrewPosition")
-  backupCrewRoles   TeamCrewPosition[]      @relation("BackupCrewPosition")
-  promotedKnownFaces TeamKnownFace[]        @relation("PromotedKnownFace")
-  relationships     CharacterRelationship[]
+  id                 String                       @id @default(cuid())
+  name               String
+  description        String                       @default("")
+  background         String                       @default("")
+  originCulture      OriginCulture?
+  originSystem       OriginSystem?
+  upbringing         Upbringing?
+  concept            String                       @default("")
+  groupConcept       String                       @default("")
+  icon               String                       @default("")
+  reputation         Int                          @default(0)
+  personalProblem    String                       @default("")
+  face               String                       @default("")
+  clothing           String                       @default("")
+  portraitPath       String?
+  portraitAsset      CharacterPortrait?
+  strength           Int                          @default(2)
+  agility            Int                          @default(2)
+  wits               Int                          @default(2)
+  empathy            Int                          @default(2)
+  maxHitPoints       Int                          @default(4)
+  currentHitPoints   Int                          @default(4)
+  maxMindPoints      Int                          @default(4)
+  currentMindPoints  Int                          @default(4)
+  maxRadiation       Int                          @default(10)
+  radiation          Int                          @default(0)
+  experience         Int                          @default(0)
+  criticalInjuries   String                       @default("")
+  notes              String                       @default("")
+  myCabinDescription String                       @default("")
+  myCabinGear        String                       @default("")
+  myCabinOther       String                       @default("")
+  birr               Int                          @default(0)
+  armorName          String                       @default("")
+  armorRating        Int                          @default(0)
+  armorComment       String                       @default("")
+  dexterity          Int                          @default(0)
+  force              Int                          @default(0)
+  infiltration       Int                          @default(0)
+  manipulation       Int                          @default(0)
+  meleeCombat        Int                          @default(0)
+  observation        Int                          @default(0)
+  rangedCombat       Int                          @default(0)
+  survival           Int                          @default(0)
+  command            Int                          @default(0)
+  culture            Int                          @default(0)
+  dataDjinn          Int                          @default(0)
+  medicurgy          Int                          @default(0)
+  mysticPowers       Int                          @default(0)
+  pilot              Int                          @default(0)
+  science            Int                          @default(0)
+  technology         Int                          @default(0)
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  contacts           CharacterContact[]
+  gearItems          CharacterGearItem[]
+  primaryCrewRoles   TeamCrewPosition[]           @relation("PrimaryCrewPosition")
+  backupCrewRoles    TeamCrewPosition[]           @relation("BackupCrewPosition")
+  promotedKnownFaces TeamKnownFace[]              @relation("PromotedKnownFace")
+  relationships      CharacterRelationship[]
   conditionModifiers CharacterConditionModifier[]
-  talents           CharacterTalent[]
-  weapons           CharacterWeapon[]
+  talents            CharacterTalent[]
+  weapons            CharacterWeapon[]
 }
 
 model CharacterConditionModifier {
@@ -146,10 +146,10 @@ model CharacterConditionModifier {
 }
 
 model CharacterPortrait {
-  characterId String   @id
+  characterId String    @id
   mimeType    String
   data        Bytes
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime  @updatedAt
   character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
 }
 
@@ -196,21 +196,25 @@ model TeamCrewPosition {
   primaryCharacter   Character?   @relation("PrimaryCrewPosition", fields: [primaryCharacterId], references: [id], onDelete: SetNull)
   team               Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
-  @@index([teamId, order])
   @@unique([teamId, role])
+  @@index([teamId, order])
 }
 
 model TeamStoryBeat {
-  id          String   @id @default(cuid())
-  teamId      String
-  order       Int
-  title       String   @default("")
-  description String   @default("")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  id           String          @id @default(cuid())
+  teamId       String
+  parentBeatId String?
+  order        Int
+  title        String          @default("")
+  description  String          @default("")
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  parentBeat   TeamStoryBeat?  @relation("TeamStoryBeatHierarchy", fields: [parentBeatId], references: [id], onDelete: SetNull)
+  childBeats   TeamStoryBeat[] @relation("TeamStoryBeatHierarchy")
+  team         Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@index([teamId, order])
+  @@index([teamId, parentBeatId, order])
 }
 
 model TeamNote {
@@ -228,31 +232,31 @@ model TeamNote {
 }
 
 model TeamKnownFace {
-  id                  String     @id @default(cuid())
+  id                  String                 @id @default(cuid())
   teamId              String
   order               Int
-  name                String     @default("")
-  concept             String     @default("")
-  faction             String     @default("")
-  lastSeen            String     @default("")
-  trustLevel          Int        @default(3)
-  notes               String     @default("")
+  name                String                 @default("")
+  concept             String                 @default("")
+  faction             String                 @default("")
+  lastSeen            String                 @default("")
+  trustLevel          Int                    @default(3)
+  notes               String                 @default("")
   portraitPath        String?
   portraitAsset       TeamKnownFacePortrait?
   promotedCharacterId String?
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
-  promotedCharacter   Character? @relation("PromotedKnownFace", fields: [promotedCharacterId], references: [id], onDelete: SetNull)
-  team                Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  promotedCharacter   Character?             @relation("PromotedKnownFace", fields: [promotedCharacterId], references: [id], onDelete: SetNull)
+  team                Team                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@index([teamId, order])
 }
 
 model TeamKnownFacePortrait {
-  knownFaceId String   @id
+  knownFaceId String        @id
   mimeType    String
   data        Bytes
-  updatedAt   DateTime @updatedAt
+  updatedAt   DateTime      @updatedAt
   knownFace   TeamKnownFace @relation(fields: [knownFaceId], references: [id], onDelete: Cascade)
 }
 

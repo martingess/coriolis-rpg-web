@@ -1,10 +1,12 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { useTranslation } from "react-i18next";
 import {
   useDeferredValue,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   useTransition,
@@ -36,19 +38,31 @@ import {
   SavableTextField,
   SectionCard,
 } from "@/components/field-controls";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import {
   TeamScreen,
-  teamQuickNavSections,
+  getTeamQuickNavSections,
   type TeamQuickNavSectionId,
 } from "@/components/team-screen";
 import {
   calculateStarterGuidance,
-  formatEncumbranceUnits,
   getEncumbranceCapacityUnits,
   getEncumbranceUsedUnits,
-  starterGuidanceHints,
-  starterGuidanceLabels,
 } from "@/lib/coriolis-rules";
+import {
+  describeSkillDicePoolUk,
+  describeVarianceUk,
+  formatConditionModifierAppliedLabelUk,
+  formatEncumbranceUnitsUk,
+  getAttributeLabel,
+  getConditionModifierTargetLabel,
+  getLocalizedInventoryPreset,
+  getOriginCultureLabel,
+  getOriginSystemLabel,
+  getSkillLabel,
+  getTalentSourceLabel,
+  getUpbringingLabel,
+} from "@/lib/localization";
 import {
   applyOptimisticSkillEdits,
   clearOptimisticSkillEdit,
@@ -73,6 +87,8 @@ import {
   getCharacterHref,
   getPanelIdFromPathname,
 } from "@/lib/roster-routes";
+import { i18n } from "@/lib/i18n";
+import { useLocaleText } from "@/lib/use-locale-text";
 import type {
   CharacterConditionModifierRecord,
   CharacterRecord,
@@ -81,10 +97,7 @@ import type {
   ConditionModifierTarget,
   InventoryKind,
   InventoryPreset,
-  OriginCulture,
-  OriginSystem,
   RepeaterKind,
-  Upbringing,
 } from "@/lib/roster-types";
 import type {
   TeamRecord,
@@ -107,74 +120,47 @@ type SkillKind = "general" | "advanced";
 const attributeSkillSections = [
   {
     field: "strength",
-    label: "Strength",
-    hint: "Raw power and physique",
     skills: [
-      { field: "meleeCombat", label: "Melee Combat", kind: "general" },
-      { field: "force", label: "Force", kind: "general" },
+      { field: "meleeCombat", kind: "general" },
+      { field: "force", kind: "general" },
     ],
   },
   {
     field: "agility",
-    label: "Agility",
-    hint: "Control, reflexes, motion",
     skills: [
-      { field: "dexterity", label: "Dexterity", kind: "general" },
-      { field: "infiltration", label: "Infiltration", kind: "general" },
-      { field: "rangedCombat", label: "Ranged Combat", kind: "general" },
-      { field: "pilot", label: "Pilot", kind: "advanced" },
+      { field: "dexterity", kind: "general" },
+      { field: "infiltration", kind: "general" },
+      { field: "rangedCombat", kind: "general" },
+      { field: "pilot", kind: "advanced" },
     ],
   },
   {
     field: "wits",
-    label: "Wits",
-    hint: "Instinct, analysis, awareness",
     skills: [
-      { field: "survival", label: "Survival", kind: "general" },
-      { field: "observation", label: "Observation", kind: "general" },
-      { field: "dataDjinn", label: "Data Djinn", kind: "advanced" },
-      { field: "medicurgy", label: "Medicurgy", kind: "advanced" },
-      { field: "science", label: "Science", kind: "advanced" },
-      { field: "technology", label: "Technology", kind: "advanced" },
+      { field: "survival", kind: "general" },
+      { field: "observation", kind: "general" },
+      { field: "dataDjinn", kind: "advanced" },
+      { field: "medicurgy", kind: "advanced" },
+      { field: "science", kind: "advanced" },
+      { field: "technology", kind: "advanced" },
     ],
   },
   {
     field: "empathy",
-    label: "Empathy",
-    hint: "Presence, empathy, persuasion",
     skills: [
-      { field: "manipulation", label: "Manipulation", kind: "general" },
-      { field: "command", label: "Command", kind: "advanced" },
-      { field: "culture", label: "Culture", kind: "advanced" },
-      { field: "mysticPowers", label: "Mystic Powers", kind: "advanced" },
+      { field: "manipulation", kind: "general" },
+      { field: "command", kind: "advanced" },
+      { field: "culture", kind: "advanced" },
+      { field: "mysticPowers", kind: "advanced" },
     ],
   },
 ] as const satisfies ReadonlyArray<{
   field: AttributeField;
-  hint: string;
-  label: string;
   skills: ReadonlyArray<{
     field: CharacterSkillField;
     kind: SkillKind;
-    label: string;
   }>;
 }>;
-
-function describeSkillDicePool(
-  attributeValue: number,
-  skillValue: number,
-  kind: SkillKind,
-) {
-  if (kind === "advanced" && skillValue === 0) {
-    return "Needs 1 rank before it can be rolled.";
-  }
-
-  if (skillValue === 0) {
-    return `Base chance ${attributeValue} dice from the attribute alone.`;
-  }
-
-  return `Pool ${attributeValue + skillValue} dice: ${attributeValue} attribute + ${skillValue} skill.`;
-}
 
 type ValuePipsProps = {
   label: string;
@@ -193,6 +179,7 @@ function ValuePips({
   size = "sm",
   value,
 }: ValuePipsProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-wrap gap-2" role="group" aria-label={label}>
       {Array.from({ length: max }, (_, index) => {
@@ -210,8 +197,8 @@ function ValuePips({
             }`}
             aria-label={
               value === pipValue
-                ? `${label}: decrease to ${nextValue}`
-                : `${label}: set to ${pipValue}`
+                ? `${label}: ${t("controls.decreaseTo", { value: nextValue })}`
+                : `${label}: ${t("controls.setTo", { value: pipValue })}`
             }
             aria-pressed={isActive}
             onClick={() => {
@@ -224,97 +211,21 @@ function ValuePips({
   );
 }
 
-const talentSourceOptions = [
-  { value: "group", label: "Group" },
-  { value: "concept", label: "Personal" },
-  { value: "icon", label: "Icon" },
-  { value: "other", label: "Other" },
-];
-
-const originCultureLabels: Record<OriginCulture, string> = {
-  firstcome: "Firstcome",
-  zenithian: "Zenithian",
-};
-
-const originSystemLabels: Record<OriginSystem, string> = {
-  algol: "Algol",
-  mira: "Mira",
-  kua: "Kua",
-  dabaran: "Dabaran",
-  zalos: "Zalos",
-  other: "Other",
-};
-
-const upbringingLabels: Record<Upbringing, string> = {
-  plebeian: "Plebeian",
-  stationary: "Stationary",
-  privileged: "Privileged",
-};
-
-const originCultureOptions = [
-  { value: "", label: "Choose origin culture" },
-  ...originCultureValues.map((value) => ({
-    value,
-    label: originCultureLabels[value],
-  })),
-];
-
-const originSystemOptions = [
-  { value: "", label: "Choose home system" },
-  ...originSystemValues.map((value) => ({
-    value,
-    label: originSystemLabels[value],
-  })),
-];
-
-const upbringingOptions = [
-  { value: "", label: "Choose upbringing" },
-  ...upbringingValues.map((value) => ({
-    value,
-    label: upbringingLabels[value],
-  })),
-];
-
-const conditionModifierTargetLabels: Record<ConditionModifierTarget, string> = {
-  hitPoints: "Hit Points",
-  mindPoints: "Mind Points",
-  radiation: "Radiation",
-};
-
-const conditionModifierTargetOptions = conditionModifierTargetValues.map((value) => ({
-  value,
-  label: conditionModifierTargetLabels[value],
-}));
-
-const encumbrancePresets = [
-  { value: "0", label: "Tiny" },
-  { value: "1", label: "Light" },
-  { value: "2", label: "Normal" },
-  { value: "4", label: "Heavy" },
-  { value: "6", label: "3 rows" },
-  { value: "8", label: "4 rows" },
-  { value: "10", label: "5 rows" },
-  { value: "12", label: "6 rows" },
-];
-
-const allQuickNavSections = [
-  { id: "identity", label: "Identity", eyebrow: "Front Sheet" },
-  { id: "appearance", label: "Appearance", eyebrow: "Presence" },
-  { id: "conditions", label: "Conditions", eyebrow: "Trauma" },
-  { id: "stats", label: "Stats", eyebrow: "Rulebook Matrix" },
-  { id: "starter-rules", label: "Starter Rules", eyebrow: "Creation Guide" },
-  { id: "relationships", label: "Relationships", eyebrow: "Other PCs" },
-  { id: "talents", label: "Talents", eyebrow: "Edge" },
-  { id: "armor", label: "Armor", eyebrow: "Protection" },
-  { id: "weapons", label: "Weapons", eyebrow: "Loadout" },
-  { id: "gear", label: "Gear", eyebrow: "Encumbrance" },
-  { id: "tiny-items", label: "Tiny Items", eyebrow: "Pocket Rituals" },
-  { id: "people-ive-met", label: "Contacts", eyebrow: "People I've Met" },
-  { id: "my-cabin", label: "My Cabin", eyebrow: "Private Space" },
-  { id: "notes", label: "Notes", eyebrow: "Back Sheet" },
-] as const;
-
-type QuickNavSectionId = (typeof allQuickNavSections)[number]["id"];
+type QuickNavSectionId =
+  | "identity"
+  | "appearance"
+  | "conditions"
+  | "stats"
+  | "starter-rules"
+  | "relationships"
+  | "talents"
+  | "armor"
+  | "weapons"
+  | "gear"
+  | "tiny-items"
+  | "people-ive-met"
+  | "my-cabin"
+  | "notes";
 type HeaderQuickNavSection<TSectionId extends string> = {
   id: TSectionId;
   label: string;
@@ -330,7 +241,7 @@ type HeaderQuickNavProps<TSectionId extends string> = {
   sections: readonly HeaderQuickNavSection<TSectionId>[];
 };
 
-const birrFormatter = new Intl.NumberFormat("en-US");
+const birrFormatter = new Intl.NumberFormat("uk-UA");
 const MIN_BIRR = 0;
 const MAX_BIRR = 999999;
 
@@ -342,11 +253,34 @@ type PendingRemoval = {
 };
 
 function formatBirr(value: number) {
-  return `${birrFormatter.format(value)} birr`;
+  return `${birrFormatter.format(value)} ${
+    (i18n.resolvedLanguage ?? i18n.language) === "uk" ? "бірр" : "birr"
+  }`;
 }
 
 function clampBirr(value: number) {
   return Math.min(Math.max(value, MIN_BIRR), MAX_BIRR);
+}
+
+function getCharacterQuickNavSections(
+  lt: (english: string, ukrainian: string) => string,
+) {
+  return [
+    { id: "identity", label: lt("Identity", "Ідентичність"), eyebrow: lt("Front Sheet", "Лицьовий аркуш") },
+    { id: "appearance", label: lt("Appearance", "Зовнішність"), eyebrow: lt("Presence", "Присутність") },
+    { id: "conditions", label: lt("Conditions", "Стани"), eyebrow: lt("Trauma", "Травми") },
+    { id: "stats", label: lt("Stats", "Характеристики"), eyebrow: lt("Rulebook Matrix", "Матриця правил") },
+    { id: "starter-rules", label: lt("Starter Rules", "Стартові правила"), eyebrow: lt("Creation Guide", "Гід створення") },
+    { id: "relationships", label: lt("Relationships", "Стосунки"), eyebrow: lt("Other PCs", "Інші ПГ") },
+    { id: "talents", label: lt("Talents", "Таланти"), eyebrow: lt("Edge", "Перевага") },
+    { id: "armor", label: lt("Armor", "Броня"), eyebrow: lt("Protection", "Захист") },
+    { id: "weapons", label: lt("Weapons", "Зброя"), eyebrow: lt("Loadout", "Оснащення") },
+    { id: "gear", label: lt("Gear", "Спорядження"), eyebrow: lt("Encumbrance", "Навантаження") },
+    { id: "tiny-items", label: lt("Tiny Items", "Дрібниці"), eyebrow: lt("Pocket Rituals", "Кишенькові ритуали") },
+    { id: "people-ive-met", label: lt("Contacts", "Контакти"), eyebrow: lt("People I've Met", "Ті, кого я зустрів") },
+    { id: "my-cabin", label: lt("My Cabin", "Моя каюта"), eyebrow: lt("Private Space", "Особистий простір") },
+    { id: "notes", label: lt("Notes", "Нотатки"), eyebrow: lt("Back Sheet", "Зворотний аркуш") },
+  ] as const;
 }
 
 function HeaderQuickNav<TSectionId extends string>({
@@ -357,12 +291,14 @@ function HeaderQuickNav<TSectionId extends string>({
   onJumpToSection,
   sections,
 }: HeaderQuickNavProps<TSectionId>) {
+  const { t } = useTranslation();
+
   return (
     <div className="coriolis-quick-nav">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-3">
           <p className="text-[0.68rem] uppercase tracking-[0.36em] text-[var(--ink-faint)]">
-            Quick Nav
+            {t("common.quickNav.label")}
           </p>
           <div className="hidden h-px w-20 bg-[linear-gradient(90deg,rgba(201,160,80,0.3),transparent)] md:block" />
           <p className="hidden text-sm text-[var(--ink-muted)] md:block">{description}</p>
@@ -413,6 +349,8 @@ function ConfirmRemovalModal({
   onConfirm: () => void;
   pendingRemoval: PendingRemoval | null;
 }) {
+  const { t } = useTranslation();
+  const { lt } = useLocaleText();
   const titleId = useId();
   const descriptionId = useId();
 
@@ -453,7 +391,7 @@ function ConfirmRemovalModal({
       >
         <div className="coriolis-modal__header">
           <div className="coriolis-modal__copy">
-            <p className="coriolis-modal__eyebrow">Confirm Removal</p>
+            <p className="coriolis-modal__eyebrow">{lt("Removal Confirmation", "Підтвердження видалення")}</p>
             <h2 id={titleId} className="coriolis-modal__title">
               {pendingRemoval.title}
             </h2>
@@ -464,7 +402,7 @@ function ConfirmRemovalModal({
         </div>
         <div className="coriolis-modal__actions">
           <button type="button" className="coriolis-chip" onClick={onCancel}>
-            Cancel
+            {t("common.actions.cancel")}
           </button>
           <button
             type="button"
@@ -490,6 +428,8 @@ function BirrAdjustmentModal({
   onCancel: () => void;
   onConfirm: (delta: number) => void;
 }) {
+  const { t } = useTranslation();
+  const { lt } = useLocaleText();
   const titleId = useId();
   const descriptionId = useId();
   const inputId = useId();
@@ -556,19 +496,22 @@ function BirrAdjustmentModal({
       >
         <div className="coriolis-modal__header">
           <div className="coriolis-modal__copy">
-            <p className="coriolis-modal__eyebrow">Birr Adjustment</p>
+            <p className="coriolis-modal__eyebrow">{lt("Birr Adjustment", "Коригування біррів")}</p>
             <h2 id={titleId} className="coriolis-modal__title">
-              Adjust Birr
+              {lt("Adjust birr", "Налаштувати бірри")}
             </h2>
             <p id={descriptionId} className="coriolis-modal__description">
-              Enter a positive number to add birr or a negative number to subtract it.
+              {lt(
+                "Enter a positive number to add birr, or a negative one to subtract it.",
+                "Введіть додатне число, щоб додати бірри, або від'ємне, щоб їх відняти.",
+              )}
             </p>
           </div>
         </div>
         <div className="coriolis-modal__body">
           <label htmlFor={inputId} className="flex flex-col gap-2">
             <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
-              Amount to add or subtract
+              {lt("Amount to add or subtract", "Сума для додавання або віднімання")}
             </span>
             <input
               id={inputId}
@@ -583,21 +526,21 @@ function BirrAdjustmentModal({
           </label>
           <div className="mt-4 grid gap-3 rounded-[1.2rem] border border-[var(--line-soft)] bg-[var(--panel-soft)] p-4 text-sm text-[var(--ink-muted)]">
             <div className="flex items-center justify-between gap-3">
-              <span>Current total</span>
+              <span>{lt("Current amount", "Поточна сума")}</span>
               <strong className="text-[var(--paper)]">{formatBirr(currentValue)}</strong>
             </div>
             <div className="flex items-center justify-between gap-3">
-              <span>Resulting total</span>
+              <span>{lt("Final amount", "Підсумкова сума")}</span>
               <strong className="text-[var(--paper)]">{formatBirr(nextValue)}</strong>
             </div>
           </div>
         </div>
         <div className="coriolis-modal__actions">
           <button type="button" className="coriolis-chip" onClick={onCancel}>
-            Cancel
+            {t("common.actions.cancel")}
           </button>
           <button type="submit" className="coriolis-chip" disabled={isUnchanged}>
-            Apply
+            {t("common.actions.apply")}
           </button>
         </div>
       </form>
@@ -611,7 +554,7 @@ type ConditionModifierModalState = {
 };
 
 function formatConditionModifierAppliedLabel(count: number) {
-  return count === 1 ? "Modifier applied" : "Modifiers applied";
+  return formatConditionModifierAppliedLabelUk(count);
 }
 
 function ConditionModifierEditorCard({
@@ -628,6 +571,12 @@ function ConditionModifierEditorCard({
     value: number;
   }) => void;
 }) {
+  const { t } = useTranslation();
+  const { lt } = useLocaleText();
+  const conditionModifierTargetOptions = conditionModifierTargetValues.map((value) => ({
+    value,
+    label: getConditionModifierTargetLabel(value),
+  }));
   const [target, setTarget] = useState(modifier.target);
   const [name, setName] = useState(modifier.name);
   const [description, setDescription] = useState(modifier.description);
@@ -668,20 +617,20 @@ function ConditionModifierEditorCard({
     >
       <div className="mb-3 flex items-center justify-between gap-3">
         <p className="text-[0.72rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
-          {conditionModifierTargetLabels[modifier.target]}
+          {getConditionModifierTargetLabel(modifier.target)}
         </p>
         <button
           type="button"
           className="text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)]"
           onClick={onDelete}
         >
-          Remove
+          {t("common.actions.remove")}
         </button>
       </div>
       <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)_140px]">
         <label className="flex flex-col gap-2">
           <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
-            Affects
+            {lt("Affects", "Впливає на")}
           </span>
           <select
             className="coriolis-select"
@@ -697,18 +646,18 @@ function ConditionModifierEditorCard({
         </label>
         <label className="flex flex-col gap-2">
           <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
-            Name
+            {lt("Name", "Назва")}
           </span>
           <input
             className="coriolis-input"
             value={name}
-            placeholder="Exo shell reinforcement"
+            placeholder={lt("Exo shell reinforcement", "Підсилення екзокостюма")}
             onChange={(event) => setName(event.target.value)}
           />
         </label>
         <label className="flex flex-col gap-2">
           <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
-            Modifier
+            {lt("Modifier", "Модифікатор")}
           </span>
           <input
             className="coriolis-input text-center"
@@ -722,19 +671,22 @@ function ConditionModifierEditorCard({
       </div>
       <label className="mt-4 flex flex-col gap-2">
         <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
-          Description
+          {lt("Description", "Опис")}
         </span>
         <textarea
           className="coriolis-textarea"
           rows={3}
           value={description}
-          placeholder="Why this modifier exists and when it matters."
+          placeholder={lt(
+            "Why does this modifier exist, and when does it matter?",
+            "Чому існує цей модифікатор і коли він має значення.",
+          )}
           onChange={(event) => setDescription(event.target.value)}
         />
       </label>
       <div className="mt-4 flex justify-end">
         <button type="submit" className="coriolis-chip" disabled={isUnchanged}>
-          Save
+          {t("common.actions.save")}
         </button>
       </div>
     </form>
@@ -773,6 +725,12 @@ function ConditionModifierModal({
     },
   ) => void;
 }) {
+  const { t } = useTranslation();
+  const { lt } = useLocaleText();
+  const conditionModifierTargetOptions = conditionModifierTargetValues.map((value) => ({
+    value,
+    label: getConditionModifierTargetLabel(value),
+  }));
   const titleId = useId();
   const descriptionId = useId();
   const [filterTarget, setFilterTarget] = useState<ConditionModifierTarget | "all">(
@@ -816,34 +774,36 @@ function ConditionModifierModal({
   return (
     <div className="coriolis-modal coriolis-modal--confirm" onClick={onCancel} role="presentation">
       <div
-        className="coriolis-modal__dialog max-h-[92vh] overflow-y-auto"
+        className="coriolis-modal__dialog coriolis-modal__dialog--condition-modifiers"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="coriolis-modal__header">
-          <div className="coriolis-modal__copy">
-            <p className="coriolis-modal__eyebrow">Conditions</p>
+        <div className="coriolis-modal__header coriolis-modal__header--condition-modifiers">
+          <div className="coriolis-modal__copy coriolis-modal__copy--condition-modifiers">
+            <p className="coriolis-modal__eyebrow">{lt("Conditions", "Стани")}</p>
             <h2 id={titleId} className="coriolis-modal__title">
-              Track Condition Modifiers
+              {lt("Condition Modifier Tracking", "Відстеження модифікаторів стану")}
             </h2>
             <p id={descriptionId} className="coriolis-modal__description">
-              Add lasting effects for {characterName}. Modifiers change the max size of hit
-              points, mind points, or radiation and stay in the database.
+              {lt(
+                `Add lasting effects for ${characterName}. Modifiers adjust maximum hit points, mind points, or radiation and are stored in the database.`,
+                `Додавайте тривалі ефекти для ${characterName}. Модифікатори змінюють максимальні значення очок здоров'я, очок розуму або радіації та зберігаються в базі даних.`,
+              )}
             </p>
           </div>
         </div>
 
-        <div className="coriolis-modal__body space-y-5">
-          <div className="grid gap-4 rounded-[1.2rem] border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.05)] p-4">
+        <div className="coriolis-modal__body coriolis-modal__body--condition-modifiers">
+          <div className="grid shrink-0 gap-4 rounded-[1.2rem] border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.05)] p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="font-display text-lg uppercase tracking-[0.12em] text-[var(--paper)]">
-                Add Modifier
+                {lt("Add Modifier", "Додати модифікатор")}
               </p>
               <label className="flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)]">
-                Show
+                {lt("Show", "Показати")}
                 <select
                   className="coriolis-select min-w-[170px]"
                   value={filterTarget}
@@ -851,7 +811,7 @@ function ConditionModifierModal({
                     setFilterTarget(event.target.value as ConditionModifierTarget | "all")
                   }
                 >
-                  <option value="all">All modifiers</option>
+                  <option value="all">{lt("All modifiers", "Усі модифікатори")}</option>
                   {conditionModifierTargetOptions.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
@@ -879,7 +839,7 @@ function ConditionModifierModal({
               <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)_140px]">
                 <label className="flex flex-col gap-2">
                   <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
-                    Affects
+                    {lt("Affects", "Впливає на")}
                   </span>
                   <select
                     className="coriolis-select"
@@ -897,18 +857,18 @@ function ConditionModifierModal({
                 </label>
                 <label className="flex flex-col gap-2">
                   <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
-                    Name
+                    {lt("Name", "Назва")}
                   </span>
                   <input
                     className="coriolis-input"
                     value={createName}
-                    placeholder="Blessed talisman"
+                    placeholder={lt("Blessed talisman", "Благословенний талісман")}
                     onChange={(event) => setCreateName(event.target.value)}
                   />
                 </label>
                 <label className="flex flex-col gap-2">
                   <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
-                    Modifier
+                    {lt("Modifier", "Модифікатор")}
                   </span>
                   <input
                     className="coriolis-input text-center"
@@ -923,29 +883,29 @@ function ConditionModifierModal({
 
               <label className="flex flex-col gap-2">
                 <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
-                  Description
+                  {lt("Description", "Опис")}
                 </span>
                 <textarea
                   className="coriolis-textarea"
                   rows={3}
                   value={createDescription}
-                  placeholder="Short note for what caused the change."
+                  placeholder={lt("A short note about why this changed.", "Коротка нотатка про причину змін.")}
                   onChange={(event) => setCreateDescription(event.target.value)}
                 />
               </label>
 
               <div className="flex justify-end">
                 <button type="submit" className="coriolis-chip">
-                  Add Modifier
+                  {lt("Add Modifier", "Додати модифікатор")}
                 </button>
               </div>
             </form>
           </div>
 
-          <div className="grid gap-4">
+          <div className="grid min-h-[12rem] flex-1 content-start gap-4 overflow-y-auto pr-1">
             {visibleModifiers.length === 0 ? (
               <div className="rounded-[1.2rem] border border-dashed border-[var(--line-soft)] px-4 py-5 text-sm text-[var(--ink-muted)]">
-                No modifiers in this view yet.
+                {lt("There are no modifiers in this view yet.", "У цьому поданні ще немає модифікаторів.")}
               </div>
             ) : null}
             {visibleModifiers.map((modifier) => (
@@ -959,9 +919,9 @@ function ConditionModifierModal({
           </div>
         </div>
 
-        <div className="coriolis-modal__actions">
+        <div className="coriolis-modal__actions coriolis-modal__actions--condition-modifiers">
           <button type="button" className="coriolis-chip" onClick={onCancel}>
-            Close
+            {t("common.actions.close")}
           </button>
         </div>
       </div>
@@ -969,21 +929,15 @@ function ConditionModifierModal({
   );
 }
 
-function describeVariance(actual: number, target: number) {
-  if (actual === target) {
-    return "Aligned with the starter target.";
-  }
-
-  const delta = Math.abs(actual - target);
-
-  return actual > target ? `${delta} above target.` : `${delta} below target.`;
-}
-
 export function RosterApp({
   initialCharacters,
   inventoryCatalog,
   initialTeam,
 }: RosterAppProps) {
+  const { t } = useTranslation();
+  const { lt } = useLocaleText();
+  const allQuickNavSections = useMemo(() => getCharacterQuickNavSections(lt), [lt]);
+  const teamQuickNavSections = useMemo(() => getTeamQuickNavSections(lt), [lt]);
   const router = useRouter();
   const pathname = usePathname();
   const [characters, setCharacters] = useState(initialCharacters);
@@ -992,7 +946,10 @@ export function RosterApp({
   const [team, setTeam] = useState(initialTeam);
   const [drawerKind, setDrawerKind] = useState<InventoryKind | null>(null);
   const [notice, setNotice] = useState<string | null>(
-    "Autosaves on blur. Shared crew data and character sheets stay in sync.",
+    lt(
+      "Autosaves on blur. Shared crew data and character sheets stay in sync.",
+      "Автозбереження працює при втраті фокуса. Спільні дані екіпажу й аркуші персонажів залишаються синхронізованими.",
+    ),
   );
   const [isStarterRulesHidden, setIsStarterRulesHidden] = useState(false);
   const [activeSectionId, setActiveSectionId] = useState<QuickNavSectionId>(
@@ -1021,6 +978,43 @@ export function RosterApp({
         visibleCharacters[0] ??
         null;
   const selectedCharacterId = selectedCharacter?.id ?? null;
+  const originCultureOptions = [
+    { value: "", label: lt("Choose origin culture", "Оберіть культуру походження") },
+    ...originCultureValues.map((value) => ({
+      value,
+      label: getOriginCultureLabel(value),
+    })),
+  ];
+  const originSystemOptions = [
+    { value: "", label: lt("Choose home system", "Оберіть домашню систему") },
+    ...originSystemValues.map((value) => ({
+      value,
+      label: getOriginSystemLabel(value),
+    })),
+  ];
+  const upbringingOptions = [
+    { value: "", label: lt("Choose upbringing", "Оберіть виховання") },
+    ...upbringingValues.map((value) => ({
+      value,
+      label: getUpbringingLabel(value),
+    })),
+  ];
+  const talentSourceOptions = [
+    { value: "group", label: getTalentSourceLabel("group") },
+    { value: "concept", label: getTalentSourceLabel("concept") },
+    { value: "icon", label: getTalentSourceLabel("icon") },
+    { value: "other", label: getTalentSourceLabel("other") },
+  ];
+  const encumbrancePresets = [
+    { value: "0", label: lt("Tiny", "Дрібне") },
+    { value: "1", label: lt("Light", "Легке") },
+    { value: "2", label: lt("Normal", "Звичайне") },
+    { value: "4", label: lt("Heavy", "Важке") },
+    { value: "6", label: lt("3 rows", "3 рядки") },
+    { value: "8", label: lt("4 rows", "4 рядки") },
+    { value: "10", label: lt("5 rows", "5 рядків") },
+    { value: "12", label: lt("6 rows", "6 рядків") },
+  ];
   const quickNavSections = isStarterRulesHidden
     ? allQuickNavSections.filter((section) => section.id !== "starter-rules")
     : allQuickNavSections;
@@ -1058,7 +1052,7 @@ export function RosterApp({
 
   useEffect(() => {
     setActiveSectionId(allQuickNavSections[0].id);
-  }, [selectedCharacterId]);
+  }, [allQuickNavSections, selectedCharacterId]);
 
   useEffect(() => {
     if (!isTeamSelected) {
@@ -1066,7 +1060,7 @@ export function RosterApp({
     }
 
     setActiveTeamSectionId(teamQuickNavSections[0].id);
-  }, [isTeamSelected, team.id]);
+  }, [isTeamSelected, team.id, teamQuickNavSections]);
 
   useEffect(() => {
     if (!isStarterRulesHidden || activeSectionId !== "starter-rules") {
@@ -1124,7 +1118,7 @@ export function RosterApp({
     sectionNodes.forEach((section) => observer.observe(section));
 
     return () => observer.disconnect();
-  }, [isStarterRulesHidden, selectedCharacterId]);
+  }, [allQuickNavSections, isStarterRulesHidden, selectedCharacterId]);
 
   useEffect(() => {
     if (selectedCharacter) {
@@ -1179,7 +1173,7 @@ export function RosterApp({
     sectionNodes.forEach((section) => observer.observe(section));
 
     return () => observer.disconnect();
-  }, [isTeamSelected, team.id]);
+  }, [isTeamSelected, team.id, teamQuickNavSections]);
 
   function getSkillRequestKey(characterId: string, field: CharacterSkillField) {
     return `${characterId}:${field}`;
@@ -1226,7 +1220,7 @@ export function RosterApp({
           setNotice(successMessage);
         }
       } catch (error) {
-        setNotice(error instanceof Error ? error.message : "Something went wrong.");
+        setNotice(error instanceof Error ? error.message : lt("Something went wrong.", "Сталася помилка."));
       }
     });
   }
@@ -1296,22 +1290,31 @@ export function RosterApp({
 
   function requestConditionModifierRemoval(modifier: CharacterConditionModifierRecord) {
     requestRemoval({
-      confirmLabel: "Remove",
-      description: `This permanently removes the ${conditionModifierTargetLabels[modifier.target].toLowerCase()} modifier from ${selectedCharacter?.name ?? "the current sheet"}.`,
+      confirmLabel: lt("Remove", "Прибрати"),
+      description: lt(
+        `This permanently removes the ${getConditionModifierTargetLabel(modifier.target).toLowerCase()} modifier from ${selectedCharacter?.name ?? "the current sheet"}.`,
+        `Це назавжди прибере модифікатор «${getConditionModifierTargetLabel(modifier.target).toLowerCase()}» з ${selectedCharacter?.name ?? "поточного аркуша"}.`,
+      ),
       onConfirm: () => {
         runTask(async () => {
           const updated = await deleteConditionModifierAction(modifier.id);
           patchCharacter(updated);
-        }, "Condition modifier removed.");
+        }, lt("Condition modifier removed.", "Модифікатор стану прибрано."));
       },
-      title: `Remove ${modifier.name.trim() || conditionModifierTargetLabels[modifier.target]}?`,
+      title: lt(
+        `Remove ${modifier.name.trim() || getConditionModifierTargetLabel(modifier.target)}?`,
+        `Прибрати ${modifier.name.trim() || getConditionModifierTargetLabel(modifier.target)}?`,
+      ),
     });
   }
 
   function requestCharacterDeletion(character: CharacterRecord) {
     requestRemoval({
-      confirmLabel: "Delete Sheet",
-      description: `This permanently removes ${character.name} and all of the sheet's relationships, talents, weapons, gear, contacts, and condition modifiers.`,
+      confirmLabel: lt("Delete Sheet", "Видалити аркуш"),
+      description: lt(
+        `This permanently removes ${character.name} and all of the sheet's relationships, talents, weapons, gear, contacts, and condition modifiers.`,
+        `Це назавжди видалить ${character.name} разом з усіма зв'язками, талантами, зброєю, спорядженням, контактами та модифікаторами стану.`,
+      ),
       onConfirm: () => {
         runTask(async () => {
           const remaining = await deleteCharacterAction(character.id);
@@ -1319,9 +1322,9 @@ export function RosterApp({
             mergeCharacterListWithPreservedSkills(currentCharacters, remaining),
           );
           navigateToPanel(remaining[0]?.id ?? TEAM_PANEL_ID, "replace");
-        }, "Sheet removed.");
+        }, lt("Sheet removed.", "Аркуш видалено."));
       },
-      title: `Delete ${character.name}?`,
+      title: lt(`Delete ${character.name}?`, `Видалити ${character.name}?`),
     });
   }
 
@@ -1330,17 +1333,20 @@ export function RosterApp({
     id: string,
     entryLabel: string,
     successMessage: string,
-  ) {
+    ) {
     requestRemoval({
-      confirmLabel: "Remove",
-      description: `This permanently removes the ${entryLabel.toLowerCase()} from ${selectedCharacter?.name ?? "the current sheet"}.`,
+      confirmLabel: lt("Remove", "Прибрати"),
+      description: lt(
+        `This permanently removes ${entryLabel.toLowerCase()} from ${selectedCharacter?.name ?? "the current sheet"}.`,
+        `Це назавжди прибере «${entryLabel.toLowerCase()}» з ${selectedCharacter?.name ?? "поточного аркуша"}.`,
+      ),
       onConfirm: () => {
         runTask(async () => {
           const updated = await deleteRepeaterItemAction({ kind, id });
           patchCharacter(updated);
         }, successMessage);
       },
-      title: `Remove ${entryLabel}?`,
+      title: lt(`Remove ${entryLabel}?`, `Прибрати ${entryLabel}?`),
     });
   }
 
@@ -1348,17 +1354,20 @@ export function RosterApp({
     kind: Exclude<TeamRepeaterKind, "crewPosition">,
     id: string,
     entryLabel: string,
-  ) {
+    ) {
     requestRemoval({
-      confirmLabel: "Remove",
-      description: `This permanently removes the ${entryLabel.toLowerCase()} from the shared team ledger.`,
+      confirmLabel: lt("Remove", "Прибрати"),
+      description: lt(
+        `This permanently removes ${entryLabel.toLowerCase()} from the shared team ledger.`,
+        `Це назавжди прибере «${entryLabel.toLowerCase()}» зі спільного журналу команди.`,
+      ),
       onConfirm: () => {
         runTask(async () => {
           const updated = await deleteTeamRepeaterItemAction({ kind, id });
           patchTeam(updated);
-        }, "Team ledger updated.");
+        }, lt("Team ledger updated.", "Журнал команди оновлено."));
       },
-      title: `Remove ${entryLabel}?`,
+      title: lt(`Remove ${entryLabel}?`, `Прибрати ${entryLabel}?`),
     });
   }
 
@@ -1492,13 +1501,15 @@ export function RosterApp({
       };
 
       if (!response.ok || !payload.character) {
-        throw new Error(payload.error ?? "Portrait upload failed.");
+        throw new Error(payload.error ?? lt("Portrait upload failed.", "Не вдалося завантажити портрет."));
       }
 
       patchCharacter(payload.character);
-      setNotice("Portrait updated.");
+      setNotice(lt("Portrait updated.", "Портрет оновлено."));
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Portrait upload failed.");
+      setNotice(
+        error instanceof Error ? error.message : lt("Portrait upload failed.", "Не вдалося завантажити портрет."),
+      );
     } finally {
       setIsUploading(false);
     }
@@ -1521,13 +1532,15 @@ export function RosterApp({
       };
 
       if (!response.ok || !payload.team) {
-        throw new Error(payload.error ?? "Portrait upload failed.");
+        throw new Error(payload.error ?? lt("Portrait upload failed.", "Не вдалося завантажити портрет."));
       }
 
       patchTeam(payload.team);
-      setNotice("Known-face portrait updated.");
+      setNotice(lt("Known-face portrait updated.", "Портрет знайомого обличчя оновлено."));
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Portrait upload failed.");
+      setNotice(
+        error instanceof Error ? error.message : lt("Portrait upload failed.", "Не вдалося завантажити портрет."),
+      );
     } finally {
       setIsUploading(false);
     }
@@ -1550,57 +1563,61 @@ export function RosterApp({
     : null;
   const selectedUpbringingLabel =
     starterGuidance?.selectedUpbringing
-      ? upbringingLabels[starterGuidance.selectedUpbringing]
+      ? getUpbringingLabel(starterGuidance.selectedUpbringing)
       : null;
   const starterGuidanceRows =
     starterGuidance?.target
       ? [
           {
             key: "attributePoints",
-            label: starterGuidanceLabels.attributePoints,
+            label: lt("Attribute Points", "Очки атрибутів"),
             actual: starterGuidance.actual.attributePoints,
             target: starterGuidance.target.attributePoints,
           },
           {
             key: "skillPoints",
-            label: starterGuidanceLabels.skillPoints,
+            label: lt("Skill Points", "Очки навичок"),
             actual: starterGuidance.actual.skillPoints,
             target: starterGuidance.target.skillPoints,
           },
           {
             key: "groupTalents",
-            label: starterGuidanceLabels.groupTalents,
+            label: lt("Group Talents", "Групові таланти"),
             actual: starterGuidance.actual.groupTalents,
             target: starterGuidance.target.groupTalents,
           },
           {
             key: "conceptTalents",
-            label: starterGuidanceLabels.conceptTalents,
+            label: lt("Personal Talents", "Особисті таланти"),
             actual: starterGuidance.actual.conceptTalents,
             target: starterGuidance.target.conceptTalents,
           },
           {
             key: "iconTalents",
-            label: starterGuidanceLabels.iconTalents,
+            label: lt("Icon Talents", "Іконні таланти"),
             actual: starterGuidance.actual.iconTalents,
             target: starterGuidance.target.iconTalents,
           },
           {
             key: "totalTalents",
-            label: starterGuidanceLabels.totalTalents,
+            label: lt("Total Talents", "Усього талантів"),
             actual: starterGuidance.actual.totalTalents,
             target: starterGuidance.target.totalTalents,
           },
           {
             key: "baseReputation",
-            label: starterGuidanceLabels.baseReputation,
+            label: lt("Base Upbringing Reputation", "Базова репутація виховання"),
             actual: starterGuidance.actual.reputation,
             target: starterGuidance.target.baseReputation,
-            hint: starterGuidanceHints.baseReputation,
+            hint:
+              lt(
+                "Only the base reputation from upbringing is counted here. Concept modifiers and humanite exceptions are not modeled in v1.",
+                "Лише базова репутація від виховання. Модифікатори концепту та винятки humanite у v1 не моделюються.",
+              ),
           },
           {
             key: "startingCapital",
-            label: starterGuidanceLabels.startingCapital,
+            label: lt("Starting Capital", "Стартовий капітал"),
             actual: starterGuidance.actual.startingCapital,
             target: starterGuidance.target.startingCapital,
             formatValue: formatBirr,
@@ -1657,12 +1674,17 @@ export function RosterApp({
     if (activeSectionId === "starter-rules") {
       setActiveSectionId("relationships");
     }
-    setNotice("Starter rules hidden. Use Show Starter Rules to bring the guide back.");
+    setNotice(
+      lt(
+        "Starter rules hidden. Use Show Starter Rules to bring the guide back.",
+        "Стартові правила приховано. Використайте «Показати стартові правила», щоб повернути підказки.",
+      ),
+    );
   }
 
   function showStarterRules() {
     setIsStarterRulesHidden(false);
-    setNotice("Starter rules guide restored.");
+    setNotice(lt("Starter rules guide restored.", "Гід стартових правил відновлено."));
   }
 
   return (
@@ -1674,13 +1696,14 @@ export function RosterApp({
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div className="space-y-1">
                 <p className="text-[0.72rem] uppercase tracking-[0.34em] text-[var(--ink-faint)]">
-                  Crew & Character Roster
+                  {lt("Crew & Character Roster", "Реєстр екіпажу й персонажів")}
                 </p>
                 <h1 className="font-display text-3xl uppercase tracking-[0.16em] text-[var(--paper)] md:text-4xl">
-                  Coriolis Dossier
+                  {lt("Coriolis Dossier", "Досьє Коріоліса")}
                 </h1>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <LanguageSwitcher />
                 <button
                   type="button"
                   className="coriolis-chip"
@@ -1689,10 +1712,10 @@ export function RosterApp({
                       const created = await createCharacterAction();
                       setCharacters((currentCharacters) => [...currentCharacters, created]);
                       navigateToPanel(created.id);
-                    }, "New sheet opened.");
+                    }, lt("New sheet opened.", "Новий аркуш відкрито."));
                   }}
                 >
-                  New
+                  {t("common.actions.new")}
                 </button>
                 <button
                   type="button"
@@ -1704,7 +1727,7 @@ export function RosterApp({
                     }
 
                     const nextName = window.prompt(
-                      "Rename this sheet",
+                      lt("Rename this sheet", "Перейменувати цей аркуш"),
                       selectedCharacter.name,
                     );
 
@@ -1734,10 +1757,10 @@ export function RosterApp({
                           };
                         }),
                       );
-                    }, "Sheet renamed.");
+                    }, lt("Sheet renamed.", "Аркуш перейменовано."));
                   }}
                 >
-                  Rename
+                  {t("common.actions.rename")}
                 </button>
                 <button
                   type="button"
@@ -1751,7 +1774,7 @@ export function RosterApp({
                     requestCharacterDeletion(selectedCharacter);
                   }}
                 >
-                  Delete
+                  {t("common.actions.delete")}
                 </button>
                 {isStarterRulesHidden ? (
                   <button
@@ -1759,7 +1782,7 @@ export function RosterApp({
                     className="coriolis-chip"
                     onClick={showStarterRules}
                   >
-                    Show Starter Rules
+                    {lt("Show Starter Rules", "Показати стартові правила")}
                   </button>
                 ) : null}
               </div>
@@ -1775,7 +1798,7 @@ export function RosterApp({
                 }`}
                 onClick={() => navigateToPanel(TEAM_PANEL_ID)}
               >
-                Team
+                {lt("Team", "Команда")}
               </button>
               {visibleCharacters.map((character) => {
                 const isActive = character.id === selectedCharacter?.id && !isTeamSelected;
@@ -1799,15 +1822,25 @@ export function RosterApp({
 
             <div className="flex flex-col gap-1 text-sm text-[var(--ink-muted)] md:flex-row md:items-center md:justify-between">
               <p>{notice}</p>
-              <p>{isPending || isUploading ? "Synchronizing with the ship ledger..." : "Ready"}</p>
+              <p>
+                {isPending || isUploading
+                  ? lt(
+                      "Synchronizing with the ship ledger...",
+                      "Синхронізація з корабельним журналом...",
+                    )
+                  : t("common.states.ready")}
+              </p>
             </div>
 
             {selectedCharacter ? (
               <HeaderQuickNav
                 activeLabel={activeNavSection.label}
                 activeSectionId={activeSectionId}
-                ariaLabel="Quick navigation"
-                description="Jump straight to the part of the dossier you need."
+                ariaLabel={lt("Quick navigation", "Швидка навігація")}
+                description={lt(
+                  "Jump straight to the part of the dossier you need.",
+                  "Переходьте одразу до потрібної частини досьє.",
+                )}
                 onJumpToSection={jumpToSection}
                 sections={quickNavSections}
               />
@@ -1817,8 +1850,11 @@ export function RosterApp({
               <HeaderQuickNav
                 activeLabel={activeTeamNavSection.label}
                 activeSectionId={activeTeamSectionId}
-                ariaLabel="Quick navigation"
-                description="Jump straight to the part of the crew dossier you need."
+                ariaLabel={lt("Quick navigation", "Швидка навігація")}
+                description={lt(
+                  "Jump straight to the part of the crew dossier you need.",
+                  "Переходьте одразу до потрібної частини досьє екіпажу.",
+                )}
                 onJumpToSection={jumpToTeamSection}
                 sections={teamQuickNavSections}
               />
@@ -1835,24 +1871,25 @@ export function RosterApp({
               onUpdateField={(field, value) =>
                 commitTeamField(field as TeamScalarField, value)
               }
-              onCreateRepeater={(kind) => {
+              onCreateRepeater={(kind, options) => {
                 runTask(async () => {
                   const updated = await createTeamRepeaterItemAction({
                     teamId: team.id,
                     kind,
+                    parentBeatId: options?.parentBeatId,
                   });
                   patchTeam(updated);
-                }, "Team ledger updated.");
+                }, lt("Team ledger updated.", "Журнал команди оновлено."));
               }}
               onUpdateRepeater={(kind, id, field, value) =>
                 commitTeamRepeater(kind as TeamRepeaterKind, id, field, value)
               }
               onRemoveRepeater={(kind, id) => {
                 const entryLabels: Record<Exclude<TeamRepeaterKind, "crewPosition">, string> = {
-                  factionTie: "Faction Tie",
-                  knownFace: "Known Face",
-                  note: "Note",
-                  storyBeat: "Story Beat",
+                  factionTie: lt("faction tie", "зв'язок із фракцією"),
+                  knownFace: lt("known face", "знайоме обличчя"),
+                  note: lt("note", "нотатка"),
+                  storyBeat: lt("story event", "подія історії"),
                 };
 
                 requestTeamRepeaterRemoval(kind, id, entryLabels[kind]);
@@ -1866,7 +1903,7 @@ export function RosterApp({
                   patchTeam(result.team);
                   patchCharacter(result.character);
                   navigateToPanel(result.character.id);
-                }, "Known face promoted to crew.");
+                }, lt("Known face promoted to the crew.", "Знайоме обличчя переведено до екіпажу."));
               }}
             />
           </main>
@@ -1874,8 +1911,8 @@ export function RosterApp({
           <main className="grid gap-4 lg:grid-cols-2 xl:gap-5">
             <SectionCard
               id="identity"
-              title="Identity"
-              eyebrow="Front Sheet"
+              title={lt("Identity", "Ідентичність")}
+              eyebrow={lt("Front Sheet", "Лицьовий аркуш")}
               className="lg:col-span-2"
             >
               <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
@@ -1885,7 +1922,10 @@ export function RosterApp({
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={selectedCharacter.portraitPath}
-                        alt={`${selectedCharacter.name} portrait`}
+                        alt={lt(
+                          `${selectedCharacter.name} portrait`,
+                          `Портрет ${selectedCharacter.name}`,
+                        )}
                         className="h-full w-full object-cover"
                       />
                     ) : (
@@ -1898,14 +1938,19 @@ export function RosterApp({
                             .join("")}
                         </div>
                         <p className="text-sm text-[var(--ink-muted)]">
-                          Load a portrait to turn the sheet into a proper station dossier.
+                          {lt(
+                            "Load a portrait to turn the sheet into a proper station dossier.",
+                            "Завантажте портрет, щоб перетворити аркуш на повноцінне станційне досьє.",
+                          )}
                         </p>
                       </div>
                     )}
                   </div>
 
                   <label className="mt-4 flex cursor-pointer items-center justify-center rounded-full border border-[var(--gold)] bg-[color:rgba(201,160,80,0.12)] px-4 py-3 text-sm uppercase tracking-[0.24em] text-[var(--paper)] transition hover:bg-[color:rgba(201,160,80,0.2)]">
-                    {isUploading ? "Uploading..." : "Load Image"}
+                    {isUploading
+                      ? lt("Uploading...", "Завантаження...")
+                      : lt("Load Image", "Завантажити зображення")}
                     <input
                       type="file"
                       accept="image/png,image/jpeg,image/webp"
@@ -1923,74 +1968,87 @@ export function RosterApp({
                   <div className="mt-4 grid grid-cols-2 gap-3">
                     <div className="rounded-[1.1rem] border border-[var(--line-soft)] bg-[var(--panel-soft)] px-3 py-3">
                       <p className="text-[0.7rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
-                        Encumbrance
+                        {lt("Encumbrance", "Навантаження")}
                       </p>
                       <p className="mt-2 text-lg text-[var(--paper)]">
                         {encumbranceUsed}/{encumbranceCapacity}
                       </p>
-                      <p className="text-xs text-[var(--ink-muted)]">half-row units</p>
+                      <p className="text-xs text-[var(--ink-muted)]">
+                        {lt("half-row units", "одиниці півряду")}
+                      </p>
                     </div>
                     <div className="rounded-[1.1rem] border border-[var(--line-soft)] bg-[var(--panel-soft)] px-3 py-3">
                       <p className="text-[0.7rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
-                        Vitality
+                        {lt("Vitality", "Живучість")}
                       </p>
                       <p className="mt-2 text-lg text-[var(--paper)]">
                         {selectedCharacter.currentHitPoints}/{selectedCharacter.maxHitPoints}
                       </p>
-                      <p className="text-xs text-[var(--ink-muted)]">hit points</p>
+                      <p className="text-xs text-[var(--ink-muted)]">
+                        {lt("hit points", "очки здоров&#39;я")}
+                      </p>
                     </div>
                   </div>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <SavableTextField
-                    label="Name"
+                    label={lt("Name", "Ім'я")}
                     value={selectedCharacter.name}
                     onCommit={(value) => commitField("name", value)}
                   />
                   <SavableSelectField
-                    label="Origin Culture"
-                    hint="Descriptive in v1. Use this to mark Firstcome or Zenithian roots."
+                    label={lt("Origin Culture", "Культура походження")}
+                    hint={lt(
+                      "Descriptive in v1. Use this to mark Firstcome or Zenithian roots.",
+                      "У v1 це описове поле. Використовуйте його, щоб позначити коріння Першоприбулих або зенітців.",
+                    )}
                     value={selectedCharacter.originCulture ?? ""}
                     options={originCultureOptions}
                     onCommit={(value) => commitField("originCulture", value)}
                   />
                   <SavableSelectField
-                    label="Home System"
-                    hint="Descriptive in v1. Coriolis-born characters belong to the Kua system."
+                    label={lt("Home System", "Домашня система")}
+                    hint={lt(
+                      "Descriptive in v1. Coriolis-born characters belong to the Kua system.",
+                      "У v1 це описове поле. Персонажі, народжені на Коріолісі, належать до системи Куа.",
+                    )}
                     value={selectedCharacter.originSystem ?? ""}
                     options={originSystemOptions}
                     onCommit={(value) => commitField("originSystem", value)}
                   />
                   <SavableSelectField
-                    label="Upbringing"
-                    hint="This is the only field that drives starter-budget guidance in v1."
+                    label={lt("Upbringing", "Виховання")}
+                    hint={lt(
+                      "This is the only field that drives starter-budget guidance in v1.",
+                      "У v1 лише це поле впливає на підказки стартового бюджету.",
+                    )}
                     value={selectedCharacter.upbringing ?? ""}
                     options={upbringingOptions}
                     onCommit={(value) => commitField("upbringing", value)}
                   />
                   <SavableTextField
-                    label="Background"
+                    label={lt("Background", "Походження")}
                     value={selectedCharacter.background}
                     onCommit={(value) => commitField("background", value)}
                   />
                   <SavableTextField
-                    label="Concept"
+                    label={lt("Concept", "Концепт")}
                     value={selectedCharacter.concept}
                     onCommit={(value) => commitField("concept", value)}
                   />
                   <SavableTextField
-                    label="Icon"
+                    label={lt("Icon", "Ікона")}
                     value={selectedCharacter.icon}
                     onCommit={(value) => commitField("icon", value)}
                   />
                   <SavableTextField
-                    label="Group Concept"
+                    label={lt("Group Concept", "Концепт команди")}
                     value={selectedCharacter.groupConcept}
                     onCommit={(value) => commitField("groupConcept", value)}
                   />
                   <SavableNumberField
-                    label="Reputation"
+                    label={lt("Reputation", "Репутація")}
                     min={0}
                     max={12}
                     value={selectedCharacter.reputation}
@@ -1998,7 +2056,7 @@ export function RosterApp({
                   />
                   <SavableTextField
                     className="md:col-span-2"
-                    label="Description"
+                    label={lt("Description", "Опис")}
                     multiline
                     rows={3}
                     value={selectedCharacter.description}
@@ -2006,7 +2064,7 @@ export function RosterApp({
                   />
                   <SavableTextField
                     className="md:col-span-2"
-                    label="Personal Problem"
+                    label={lt("Personal Problem", "Особиста проблема")}
                     multiline
                     rows={3}
                     value={selectedCharacter.personalProblem}
@@ -2016,17 +2074,21 @@ export function RosterApp({
               </div>
             </SectionCard>
 
-            <SectionCard id="appearance" title="Appearance" eyebrow="Presence">
+            <SectionCard
+              id="appearance"
+              title={lt("Appearance", "Зовнішність")}
+              eyebrow={lt("Presence", "Присутність")}
+            >
               <div className="grid gap-4">
                 <SavableTextField
-                  label="Face"
+                  label={lt("Face", "Обличчя")}
                   multiline
                   rows={3}
                   value={selectedCharacter.face}
                   onCommit={(value) => commitField("face", value)}
                 />
                 <SavableTextField
-                  label="Clothing"
+                  label={lt("Clothing", "Одяг")}
                   multiline
                   rows={3}
                   value={selectedCharacter.clothing}
@@ -2037,21 +2099,24 @@ export function RosterApp({
 
             <SectionCard
               id="conditions"
-              title="Conditions"
-              eyebrow="Trauma"
+              title={lt("Conditions", "Стани")}
+              eyebrow={lt("Trauma", "Травми")}
               actions={
                 <button
                   type="button"
                   className="coriolis-chip"
                   onClick={() => openConditionModifierModal("all", "hitPoints")}
                 >
-                  Add Modifier
+                  {lt("Add Modifier", "Додати модифікатор")}
                 </button>
               }
             >
               <div className="grid gap-4">
                 <CounterTrack
-                  label={`Hit Points (max ${selectedCharacter.maxHitPoints})`}
+                  label={lt(
+                    `Hit Points (max ${selectedCharacter.maxHitPoints})`,
+                    `Очки здоров'я (макс. ${selectedCharacter.maxHitPoints})`,
+                  )}
                   max={selectedCharacter.maxHitPoints}
                   value={selectedCharacter.currentHitPoints}
                   headerAction={
@@ -2070,7 +2135,10 @@ export function RosterApp({
                   onCommit={(value) => commitField("currentHitPoints", value)}
                 />
                 <CounterTrack
-                  label={`Mind Points (max ${selectedCharacter.maxMindPoints})`}
+                  label={lt(
+                    `Mind Points (max ${selectedCharacter.maxMindPoints})`,
+                    `Очки розуму (макс. ${selectedCharacter.maxMindPoints})`,
+                  )}
                   max={selectedCharacter.maxMindPoints}
                   value={selectedCharacter.currentMindPoints}
                   headerAction={
@@ -2089,7 +2157,10 @@ export function RosterApp({
                   onCommit={(value) => commitField("currentMindPoints", value)}
                 />
                 <CounterTrack
-                  label={`Radiation (max ${selectedCharacter.maxRadiation})`}
+                  label={lt(
+                    `Radiation (max ${selectedCharacter.maxRadiation})`,
+                    `Радіація (макс. ${selectedCharacter.maxRadiation})`,
+                  )}
                   max={selectedCharacter.maxRadiation}
                   value={selectedCharacter.radiation}
                   headerAction={
@@ -2108,14 +2179,17 @@ export function RosterApp({
                   onCommit={(value) => commitField("radiation", value)}
                 />
                 <SavableNumberField
-                  label="Experience"
+                  label={lt("Experience", "Досвід")}
                   min={0}
-                  hint="Bank XP freely. Every 5 XP can become a new talent or skill advance."
+                  hint={lt(
+                    "Bank XP freely. Every 5 XP can become a new talent or skill advance.",
+                    "Вільно накопичуйте XP. Кожні 5 XP можна перетворити на новий талант або розвиток навички.",
+                  )}
                   value={selectedCharacter.experience}
                   onCommit={(value) => commitField("experience", value)}
                 />
                 <SavableTextField
-                  label="Critical Injuries"
+                  label={lt("Critical Injuries", "Критичні травми")}
                   multiline
                   rows={4}
                   value={selectedCharacter.criticalInjuries}
@@ -2126,22 +2200,11 @@ export function RosterApp({
 
             <SectionCard
               id="stats"
-              title="Attributes + Skills"
-              eyebrow="Rulebook Matrix"
+              title={lt("Attributes + Skills", "Атрибути й навички")}
+              eyebrow={lt("Rulebook Matrix", "Матриця правил")}
               className="lg:col-span-2"
             >
               <div className="grid gap-5">
-                <div className="rounded-[1.35rem] border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.05)] px-4 py-4">
-                  <p className="font-display text-lg uppercase tracking-[0.14em] text-[var(--paper)]">
-                    Roll linked stats together
-                  </p>
-                  <p className="mt-2 text-sm text-[var(--ink-muted)]">
-                    The rulebook ties every skill to one attribute. General skills can roll on
-                    base attribute alone, while advanced skills need at least 1 rank before they
-                    come online.
-                  </p>
-                </div>
-
                 <div className="grid items-start gap-4 xl:grid-cols-2">
                   {attributeSkillSections.map((section) => {
                     const attributeValue = selectedCharacter[section.field] as number;
@@ -2152,19 +2215,29 @@ export function RosterApp({
                           <div className="space-y-2">
                             <div>
                               <p className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
-                                Attribute
+                                {lt("Attribute", "Атрибут")}
                               </p>
                               <h3 className="font-display text-2xl uppercase tracking-[0.12em] text-[var(--paper)]">
-                                {section.label}
+                                {getAttributeLabel(section.field)}
                               </h3>
                             </div>
                             <p className="max-w-[32rem] text-sm text-[var(--ink-muted)]">
-                              {section.hint}
+                              {section.field === "strength" &&
+                                lt("Raw power and physique", "Груба сила й фізична витривалість")}
+                              {section.field === "agility" &&
+                                lt("Control, reflexes, motion", "Контроль, рефлекси й рух")}
+                              {section.field === "wits" &&
+                                lt("Instinct, analysis, awareness", "Інстинкт, аналіз і уважність")}
+                              {section.field === "empathy" &&
+                                lt(
+                                  "Presence, empathy, persuasion",
+                                  "Присутність, співпереживання й переконання",
+                                )}
                             </p>
                           </div>
                           <div className="coriolis-stat-cluster__value">
                             <span className="text-[0.68rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
-                              Base
+                              {lt("Base", "База")}
                             </span>
                             <strong className="font-display text-3xl uppercase tracking-[0.08em] text-[var(--paper)]">
                               {attributeValue}
@@ -2175,12 +2248,15 @@ export function RosterApp({
                         <div className="rounded-[1.2rem] border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.04)] px-4 py-4">
                           <div className="mb-3 flex items-center justify-between gap-3">
                             <p className="text-[0.72rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
-                              Attribute value
+                              {lt("Attribute value", "Значення атрибута")}
                             </p>
                             <p className="text-sm text-[var(--ink-muted)]">{attributeValue}/5</p>
                           </div>
                           <ValuePips
-                            label={`${section.label} attribute`}
+                            label={lt(
+                              `${getAttributeLabel(section.field)} attribute`,
+                              `${getAttributeLabel(section.field)} атрибут`,
+                            )}
                             max={5}
                             min={1}
                             size="md"
@@ -2201,7 +2277,7 @@ export function RosterApp({
                                   <div className="min-w-0 space-y-2">
                                     <div className="flex flex-wrap items-center gap-2">
                                       <p className="font-display text-lg uppercase tracking-[0.08em] text-[var(--paper)]">
-                                        {skill.label}
+                                        {getSkillLabel(skill.field)}
                                       </p>
                                       <span
                                         className={`coriolis-skill-chip ${
@@ -2210,16 +2286,18 @@ export function RosterApp({
                                             : ""
                                         }`}
                                       >
-                                        {skill.kind}
+                                        {skill.kind === "advanced"
+                                          ? lt("advanced", "просунута")
+                                          : lt("general", "загальна")}
                                       </span>
                                       {canRoll ? null : (
                                         <span className="coriolis-skill-chip coriolis-skill-chip--locked">
-                                          Locked
+                                          {lt("Locked", "Заблоковано")}
                                         </span>
                                       )}
                                     </div>
                                     <p className="text-sm text-[var(--ink-muted)]">
-                                      {describeSkillDicePool(
+                                      {describeSkillDicePoolUk(
                                         attributeValue,
                                         skillValue,
                                         skill.kind,
@@ -2228,7 +2306,7 @@ export function RosterApp({
                                   </div>
                                   <div className="shrink-0 text-right">
                                     <p className="text-[0.68rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
-                                      Skill
+                                      {lt("Skill", "Навичка")}
                                     </p>
                                     <p className="font-display text-2xl uppercase tracking-[0.08em] text-[var(--paper)]">
                                       {skillValue}
@@ -2238,13 +2316,15 @@ export function RosterApp({
 
                                 <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                   <ValuePips
-                                    label={skill.label}
+                                    label={getSkillLabel(skill.field)}
                                     max={5}
                                     value={skillValue}
                                     onCommit={(value) => commitField(skill.field, value)}
                                   />
                                   <div className="rounded-full border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.06)] px-3 py-1 text-[0.72rem] uppercase tracking-[0.24em] text-[var(--ink)]">
-                                    {dicePool === null ? "Needs training" : `${dicePool} dice`}
+                                    {dicePool === null
+                                      ? lt("Needs training", "Потрібне навчання")
+                                      : lt(`${dicePool} dice`, `${dicePool} кубів`)}
                                   </div>
                                 </div>
                               </div>
@@ -2261,40 +2341,50 @@ export function RosterApp({
             {!isStarterRulesHidden ? (
               <SectionCard
                 id="starter-rules"
-                title="Starter Rules"
-                eyebrow="Creation Guide"
+                title={lt("Starter Rules", "Стартові правила")}
+                eyebrow={lt("Creation Guide", "Гід створення")}
                 actions={
                   <button
                     type="button"
                     className="coriolis-chip"
                     onClick={hideStarterRules}
                   >
-                    Hide
+                    {t("common.actions.hide")}
                   </button>
                 }
               >
                 {!starterGuidance?.target ? (
                   <div className="rounded-[1.35rem] border border-dashed border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.04)] px-4 py-5">
                     <p className="font-display text-lg uppercase tracking-[0.14em] text-[var(--paper)]">
-                      Guidance inactive
+                      {lt("Guidance inactive", "Підказки неактивні")}
                     </p>
                     <p className="mt-2 text-sm text-[var(--ink-muted)]">
-                      {starterGuidanceHints.emptyState}
+                      {lt(
+                        "Choose an upbringing to activate starter guidance.",
+                        "Оберіть виховання, щоб активувати стартові підказки.",
+                      )}
                     </p>
                     <p className="mt-3 text-xs uppercase tracking-[0.2em] text-[var(--ink-faint)]">
-                      Origin fields stay descriptive in v1. Upbringing alone sets the starter
-                      bundle.
+                      {lt(
+                        "Origin fields stay descriptive in v1. Upbringing alone sets the starter bundle.",
+                        "Поля походження у v1 залишаються описовими. Лише виховання визначає стартовий набір.",
+                      )}
                     </p>
                   </div>
                 ) : (
                   <div className="grid gap-4">
                     <div className="rounded-[1.35rem] border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.05)] px-4 py-4">
                       <p className="font-display text-lg uppercase tracking-[0.14em] text-[var(--paper)]">
-                        {selectedUpbringingLabel} starter bundle
+                        {lt(
+                          `${selectedUpbringingLabel} starter bundle`,
+                          `${selectedUpbringingLabel} стартовий набір`,
+                        )}
                       </p>
                       <p className="mt-2 text-sm text-[var(--ink-muted)]">
-                        This guide compares the current sheet against the rulebook starting values.
-                        It never blocks manual edits.
+                        {lt(
+                          "This guide compares the current sheet against the rulebook starting values. It never blocks manual edits.",
+                          "Цей блок порівнює поточний аркуш зі стартовими значеннями з книги правил. Він ніколи не блокує ручні зміни.",
+                        )}
                       </p>
                     </div>
 
@@ -2320,7 +2410,7 @@ export function RosterApp({
                                   {row.label}
                                 </p>
                                 <p className="mt-1 text-sm text-[var(--ink-muted)]">
-                                  {describeVariance(row.actual, row.target)}
+                                  {describeVarianceUk(row.actual, row.target)}
                                 </p>
                               </div>
                               <div className="text-right">
@@ -2328,7 +2418,7 @@ export function RosterApp({
                                   {formatValue(row.actual)}
                                 </p>
                                 <p className="text-xs uppercase tracking-[0.22em] text-[var(--ink-faint)]">
-                                  target {formatValue(row.target)}
+                                  {lt(`target ${formatValue(row.target)}`, `ціль ${formatValue(row.target)}`)}
                                 </p>
                               </div>
                             </div>
@@ -2342,7 +2432,10 @@ export function RosterApp({
 
                     {starterGuidance.actual.otherTalents > 0 ? (
                       <p className="rounded-[1.1rem] border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.04)] px-4 py-3 text-sm text-[var(--ink-muted)]">
-                        {starterGuidanceHints.otherTalents}
+                        {lt(
+                          'Other-tagged talents count toward the total row, but they do not have a dedicated rulebook starter target.',
+                          "Таланти з позначкою «Інше» враховуються в загальному підсумку, але не мають окремої стартової цілі з книги правил.",
+                        )}
                       </p>
                     ) : null}
                   </div>
@@ -2352,8 +2445,8 @@ export function RosterApp({
 
             <SectionCard
               id="relationships"
-              title="Relationships"
-              eyebrow="Other PCs"
+              title={lt("Relationships", "Стосунки")}
+              eyebrow={lt("Other PCs", "Інші ПГ")}
               actions={
                 <button
                   type="button"
@@ -2371,10 +2464,10 @@ export function RosterApp({
                         relationshipTargetName: unassignedRelationshipNames[0],
                       });
                       patchCharacter(updated);
-                    }, "Relationship row added.");
+                    }, lt("Relationship row added.", "Рядок стосунків додано."));
                   }}
                 >
-                  Add Row
+                  {lt("Add Row", "Додати рядок")}
                 </button>
               }
             >
@@ -2382,8 +2475,14 @@ export function RosterApp({
                 {selectedCharacter.relationships.length === 0 ? (
                   <p className="rounded-[1.2rem] border border-dashed border-[var(--line-soft)] px-4 py-5 text-sm text-[var(--ink-muted)]">
                     {otherCharacterNames.length === 0
-                      ? "Add another sheet to the roster before defining crew relationships."
-                      : "Add one row for each of the other current sheets in your crew."}
+                      ? lt(
+                          "Add one more sheet to the roster before defining crew relationships.",
+                          "Додайте до реєстру ще один аркуш, перш ніж визначати стосунки в екіпажі.",
+                        )
+                      : lt(
+                          "Add one row for every other active sheet in your crew.",
+                          "Додайте по одному рядку для кожного іншого активного аркуша у вашому екіпажі.",
+                        )}
                   </p>
                 ) : null}
                 {selectedCharacter.relationships.map((relationship) => (
@@ -2400,14 +2499,17 @@ export function RosterApp({
                           value: "",
                           label:
                             otherCharacterNames.length === 0
-                              ? "No other sheets in the roster"
-                              : "Choose another sheet",
+                              ? lt("There are no other sheets in the roster", "У реєстрі немає інших аркушів")
+                              : lt("Choose another sheet", "Оберіть інший аркуш"),
                         },
                         ...(!isCurrentTargetValid && relationship.targetName
                           ? [
                               {
                                 value: relationship.targetName,
-                                label: `Missing sheet: ${relationship.targetName}`,
+                                label: lt(
+                                  `Missing sheet: ${relationship.targetName}`,
+                                  `Відсутній аркуш: ${relationship.targetName}`,
+                                ),
                               },
                             ]
                           : []),
@@ -2445,10 +2547,12 @@ export function RosterApp({
                               relationshipId: relationship.id,
                             });
                             patchCharacter(updated);
-                          }, "Buddy updated.");
+                          }, lt("Buddy updated.", "Напарника оновлено."));
                         }}
                       >
-                        {relationship.isBuddy ? "Buddy" : "Set Buddy"}
+                        {relationship.isBuddy
+                          ? lt("Buddy", "Напарник")
+                          : lt("Mark as Buddy", "Позначити напарником")}
                       </button>
                       <button
                         type="button"
@@ -2457,21 +2561,27 @@ export function RosterApp({
                           requestCharacterRepeaterRemoval(
                             "relationship",
                             relationship.id,
-                            "Relationship",
-                            "Relationship removed.",
+                            lt("relationship", "стосунок"),
+                            lt("Relationship removed.", "Стосунок видалено."),
                           );
                         }}
                       >
-                        Remove
+                        {t("common.actions.remove")}
                       </button>
                     </div>
                     <div className="grid gap-4">
                       <SavableSelectField
-                        label="Other PC"
+                        label={lt("Other PC", "Інший ПГ")}
                         hint={
                           isCurrentTargetValid
-                            ? "Relationships and buddies are always tied to other active sheets."
-                            : "This row points to a sheet that no longer exists. Reassign it."
+                            ? lt(
+                                "Relationships and buddies always point to other active sheets.",
+                                "Стосунки й напарники завжди прив'язані до інших активних аркушів.",
+                              )
+                            : lt(
+                                "This row points to a sheet that no longer exists. Assign another one.",
+                                "Цей рядок вказує на аркуш, якого більше не існує. Призначте інший.",
+                              )
                         }
                         value={relationship.targetName}
                         options={relationshipTargetOptions}
@@ -2480,7 +2590,7 @@ export function RosterApp({
                         }
                       />
                       <SavableTextField
-                        label="Relationship"
+                        label={lt("Relationship", "Стосунок")}
                         multiline
                         rows={3}
                         value={relationship.description}
@@ -2499,8 +2609,8 @@ export function RosterApp({
 
             <SectionCard
               id="talents"
-              title="Talents"
-              eyebrow="Edge"
+              title={lt("Talents", "Таланти")}
+              eyebrow={lt("Edge", "Перевага")}
               actions={
                 <button
                   type="button"
@@ -2512,10 +2622,10 @@ export function RosterApp({
                         kind: "talent",
                       });
                       patchCharacter(updated);
-                    }, "Talent row added.");
+                    }, lt("Talent row added.", "Рядок таланту додано."));
                   }}
                 >
-                  Add Talent
+                  {lt("Add Talent", "Додати талант")}
                 </button>
               }
             >
@@ -2533,24 +2643,24 @@ export function RosterApp({
                           requestCharacterRepeaterRemoval(
                             "talent",
                             talent.id,
-                            "Talent",
-                            "Talent removed.",
+                            lt("talent", "талант"),
+                            lt("Talent removed.", "Талант видалено."),
                           );
                         }}
                       >
-                        Remove
+                        {t("common.actions.remove")}
                       </button>
                     </div>
                     <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px]">
                       <SavableTextField
-                        label="Talent"
+                        label={lt("Talent", "Талант")}
                         value={talent.name}
                         onCommit={(value) =>
                           commitRepeater("talent", talent.id, "name", value)
                         }
                       />
                       <SavableSelectField
-                        label="Source"
+                        label={lt("Source", "Джерело")}
                         value={talent.source}
                         options={talentSourceOptions}
                         onCommit={(value) =>
@@ -2560,7 +2670,7 @@ export function RosterApp({
                     </div>
                     <SavableTextField
                       className="mt-4"
-                      label="Notes"
+                      label={lt("Notes", "Нотатки")}
                       multiline
                       rows={3}
                       value={talent.notes}
@@ -2573,15 +2683,15 @@ export function RosterApp({
               </div>
             </SectionCard>
 
-            <SectionCard id="armor" title="Armor" eyebrow="Protection">
+            <SectionCard id="armor" title={lt("Armor", "Броня")} eyebrow={lt("Protection", "Захист")}>
               <div className="grid gap-4 sm:grid-cols-2">
                 <SavableTextField
-                  label="Armor"
+                  label={lt("Armor", "Броня")}
                   value={selectedCharacter.armorName}
                   onCommit={(value) => commitField("armorName", value)}
                 />
                 <SavableNumberField
-                  label="Rating"
+                  label={lt("Rating", "Рейтинг")}
                   min={0}
                   max={12}
                   value={selectedCharacter.armorRating}
@@ -2589,7 +2699,7 @@ export function RosterApp({
                 />
                 <SavableTextField
                   className="sm:col-span-2"
-                  label="Comment"
+                  label={lt("Comment", "Коментар")}
                   multiline
                   rows={3}
                   value={selectedCharacter.armorComment}
@@ -2600,8 +2710,8 @@ export function RosterApp({
 
             <SectionCard
               id="weapons"
-              title="Weapons"
-              eyebrow="Loadout"
+              title={lt("Weapons", "Зброя")}
+              eyebrow={lt("Loadout", "Оснащення")}
               className="lg:col-span-2"
               actions={
                 <button
@@ -2609,14 +2719,17 @@ export function RosterApp({
                   className="coriolis-chip"
                   onClick={() => setDrawerKind("weapon")}
                 >
-                  Add From Catalog
+                  {lt("Add from Catalog", "Додати з каталогу")}
                 </button>
               }
             >
               <div className="grid gap-4">
                 {selectedCharacter.weapons.length === 0 ? (
                   <p className="rounded-[1.2rem] border border-dashed border-[var(--line-soft)] px-4 py-5 text-sm text-[var(--ink-muted)]">
-                    No weapons listed. Pull one from the catalog or add a custom profile.
+                    {lt(
+                      "No weapons added yet. Pull one from the catalog or create a custom profile.",
+                      "Зброю ще не додано. Візьміть позицію з каталогу або створіть власний профіль.",
+                    )}
                   </p>
                 ) : null}
                 {selectedCharacter.weapons.map((weapon) => (
@@ -2628,8 +2741,8 @@ export function RosterApp({
                       requestCharacterRepeaterRemoval(
                         "weapon",
                         weapon.id,
-                        "Weapon",
-                        "Weapon removed.",
+                        lt("weapon", "зброю"),
+                        lt("Weapon removed.", "Зброю видалено."),
                       );
                     }}
                   />
@@ -2639,29 +2752,32 @@ export function RosterApp({
 
             <SectionCard
               id="gear"
-              title="Gear"
-              eyebrow="Encumbrance"
+              title={lt("Gear", "Спорядження")}
+              eyebrow={lt("Encumbrance", "Навантаження")}
               actions={
                 <button
                   type="button"
                   className="coriolis-chip"
                   onClick={() => setDrawerKind("gear")}
                 >
-                  Add From Catalog
+                  {lt("Add from Catalog", "Додати з каталогу")}
                 </button>
               }
             >
               <div className="mb-4 rounded-[1.25rem] border border-[var(--line-soft)] bg-[var(--panel-soft)] px-4 py-3">
                 <p className="text-[0.72rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
-                  Carrying capacity
+                  {lt("Carry Limit", "Межа перенесення")}
                 </p>
                 <p className="mt-2 text-lg text-[var(--paper)]">
-                  {encumbranceUsed}/{encumbranceCapacity} half-row units
+                  {encumbranceUsed}/{encumbranceCapacity} {lt("half-row units", "одиниць півряду")}
                 </p>
                 <p className="text-sm text-[var(--ink-muted)]">
                   {encumbranceUsed > encumbranceCapacity
-                    ? "Over capacity. Expect force checks when moving."
-                    : "Inside safe carrying limits."}
+                    ? lt(
+                        "Limit exceeded. Expect strength checks while moving.",
+                        "Перевищено ліміт. Під час руху очікуйте перевірок сили.",
+                      )
+                    : lt("Within the safe carrying limit.", "У межах безпечного ліміту перенесення.")}
                 </p>
               </div>
               <div className="grid gap-4">
@@ -2673,8 +2789,11 @@ export function RosterApp({
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <span className="text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)]">
                         {item.quantity > 1
-                          ? `${formatEncumbranceUnits(item.encumbranceUnits * item.quantity)} total (${item.quantity} x ${formatEncumbranceUnits(item.encumbranceUnits)})`
-                          : formatEncumbranceUnits(item.encumbranceUnits)}
+                          ? lt(
+                              `${formatEncumbranceUnitsUk(item.encumbranceUnits * item.quantity)} total (${item.quantity} x ${formatEncumbranceUnitsUk(item.encumbranceUnits)})`,
+                              `${formatEncumbranceUnitsUk(item.encumbranceUnits * item.quantity)} разом (${item.quantity} x ${formatEncumbranceUnitsUk(item.encumbranceUnits)})`,
+                            )
+                          : formatEncumbranceUnitsUk(item.encumbranceUnits)}
                       </span>
                       <button
                         type="button"
@@ -2683,16 +2802,16 @@ export function RosterApp({
                           requestCharacterRepeaterRemoval(
                             "gear",
                             item.id,
-                            "Gear Item",
-                            "Gear removed.",
+                            lt("gear item", "предмет спорядження"),
+                            lt("Gear removed.", "Спорядження видалено."),
                           );
                         }}
                       >
-                        Remove
+                        {t("common.actions.remove")}
                       </button>
                     </div>
                     <SavableTextField
-                      label="Item"
+                      label={lt("Item", "Предмет")}
                       value={item.name}
                       onCommit={(value) =>
                         commitRepeater("gear", item.id, "name", value)
@@ -2700,7 +2819,7 @@ export function RosterApp({
                     />
                     <div className="mt-4 grid gap-4 md:grid-cols-[140px_160px_180px]">
                       <SavableNumberField
-                        label="Quantity"
+                        label={lt("Quantity", "Кількість")}
                         min={1}
                         max={99}
                         value={item.quantity}
@@ -2709,14 +2828,14 @@ export function RosterApp({
                         }
                       />
                       <SavableTextField
-                        label="Bonus"
+                        label={lt("Bonus", "Бонус")}
                         value={item.bonus}
                         onCommit={(value) =>
                           commitRepeater("gear", item.id, "bonus", value)
                         }
                       />
                       <SavableSelectField
-                        label="Load Each"
+                        label={lt("Encumbrance per Unit", "Навантаження за одиницю")}
                         value={String(item.encumbranceUnits)}
                         options={encumbrancePresets}
                         onCommit={(value) =>
@@ -2726,7 +2845,7 @@ export function RosterApp({
                     </div>
                     <SavableTextField
                       className="mt-4"
-                      label="Comment"
+                      label={lt("Comment", "Коментар")}
                       multiline
                       rows={3}
                       value={item.comment}
@@ -2741,15 +2860,15 @@ export function RosterApp({
 
             <SectionCard
               id="tiny-items"
-              title="Tiny Items"
-              eyebrow="Pocket Rituals"
+              title={lt("Tiny Items", "Дрібниці")}
+              eyebrow={lt("Pocket Rituals", "Кишенькові ритуали")}
               actions={
                 <button
                   type="button"
                   className="coriolis-chip"
                   onClick={() => setDrawerKind("tiny")}
                 >
-                  Add From Catalog
+                  {lt("Add from Catalog", "Додати з каталогу")}
                 </button>
               }
             >
@@ -2767,16 +2886,16 @@ export function RosterApp({
                           requestCharacterRepeaterRemoval(
                             "gear",
                             item.id,
-                            "Tiny Item",
-                            "Tiny item removed.",
+                            lt("tiny item", "дрібницю"),
+                            lt("Tiny item removed.", "Дрібницю видалено."),
                           );
                         }}
                       >
-                        Remove
+                        {t("common.actions.remove")}
                       </button>
                     </div>
                     <SavableTextField
-                      label="Item"
+                      label={lt("Item", "Предмет")}
                       value={item.name}
                       onCommit={(value) =>
                         commitRepeater("gear", item.id, "name", value)
@@ -2784,7 +2903,7 @@ export function RosterApp({
                     />
                     <div className="mt-4 grid gap-4 md:grid-cols-[140px_220px]">
                       <SavableNumberField
-                        label="Quantity"
+                        label={lt("Quantity", "Кількість")}
                         min={1}
                         max={99}
                         value={item.quantity}
@@ -2793,7 +2912,7 @@ export function RosterApp({
                         }
                       />
                       <SavableTextField
-                        label="Bonus"
+                        label={lt("Bonus", "Бонус")}
                         value={item.bonus}
                         onCommit={(value) =>
                           commitRepeater("gear", item.id, "bonus", value)
@@ -2802,7 +2921,7 @@ export function RosterApp({
                     </div>
                     <SavableTextField
                       className="mt-4"
-                      label="Comment"
+                      label={lt("Comment", "Коментар")}
                       multiline
                       rows={3}
                       value={item.comment}
@@ -2817,8 +2936,8 @@ export function RosterApp({
 
             <SectionCard
               id="people-ive-met"
-              title="People I've Met"
-              eyebrow="Contacts"
+              title={lt("People I've Met", "Ті, кого я зустрів")}
+              eyebrow={lt("Contacts", "Контакти")}
               className="lg:col-span-2"
               actions={
                 <button
@@ -2831,10 +2950,10 @@ export function RosterApp({
                         kind: "contact",
                       });
                       patchCharacter(updated);
-                    }, "Contact row added.");
+                    }, lt("Contact row added.", "Рядок контакту додано."));
                   }}
                 >
-                  Add Contact
+                  {lt("Add Contact", "Додати контакт")}
                 </button>
               }
             >
@@ -2852,24 +2971,24 @@ export function RosterApp({
                           requestCharacterRepeaterRemoval(
                             "contact",
                             contact.id,
-                            "Contact",
-                            "Contact removed.",
+                            lt("contact", "контакт"),
+                            lt("Contact removed.", "Контакт видалено."),
                           );
                         }}
                       >
-                        Remove
+                        {t("common.actions.remove")}
                       </button>
                     </div>
                     <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
                       <SavableTextField
-                        label="Name"
+                        label={lt("Name", "Ім'я")}
                         value={contact.name}
                         onCommit={(value) =>
                           commitRepeater("contact", contact.id, "name", value)
                         }
                       />
                       <SavableTextField
-                        label="Concept"
+                        label={lt("Concept", "Концепт")}
                         value={contact.concept}
                         onCommit={(value) =>
                           commitRepeater("contact", contact.id, "concept", value)
@@ -2878,7 +2997,7 @@ export function RosterApp({
                     </div>
                     <SavableTextField
                       className="mt-4"
-                      label="Notes"
+                      label={lt("Notes", "Нотатки")}
                       multiline
                       rows={3}
                       value={contact.notes}
@@ -2891,24 +3010,24 @@ export function RosterApp({
               </div>
             </SectionCard>
 
-            <SectionCard id="my-cabin" title="My Cabin" eyebrow="Private Space">
+            <SectionCard id="my-cabin" title={lt("My Cabin", "Моя каюта")} eyebrow={lt("Private Space", "Особистий простір")}>
               <div className="grid gap-4">
                 <SavableTextField
-                  label="Description"
+                  label={lt("Description", "Опис")}
                   multiline
                   rows={4}
                   value={selectedCharacter.myCabinDescription}
                   onCommit={(value) => commitField("myCabinDescription", value)}
                 />
                 <SavableTextField
-                  label="Gear"
+                  label={lt("Gear", "Спорядження")}
                   multiline
                   rows={4}
                   value={selectedCharacter.myCabinGear}
                   onCommit={(value) => commitField("myCabinGear", value)}
                 />
                 <SavableTextField
-                  label="Other"
+                  label={lt("Other", "Інше")}
                   multiline
                   rows={4}
                   value={selectedCharacter.myCabinOther}
@@ -2917,11 +3036,14 @@ export function RosterApp({
               </div>
             </SectionCard>
 
-            <SectionCard id="notes" title="Notes" eyebrow="Back Sheet">
+            <SectionCard id="notes" title={lt("Notes", "Нотатки")} eyebrow={lt("Back Sheet", "Зворотний аркуш")}>
               <div className="grid gap-4">
                 <SavableNumberField
-                  label="Birr"
-                  hint="Edit directly or use Add to apply a positive or negative change."
+                  label={lt("Birr", "Бірри")}
+                  hint={lt(
+                    'Edit the value directly or use "Add" to apply a positive or negative adjustment.',
+                    "Редагуйте значення напряму або використайте «Додати», щоб внести додатну чи від'ємну зміну.",
+                  )}
                   min={MIN_BIRR}
                   value={selectedCharacter.birr}
                   onCommit={(value) => commitField("birr", value)}
@@ -2931,12 +3053,12 @@ export function RosterApp({
                       className="coriolis-chip"
                       onClick={openBirrAdjustmentModal}
                     >
-                      Add
+                      {t("common.actions.add")}
                     </button>
                   }
                 />
                 <SavableTextField
-                  label="Notes"
+                  label={lt("Notes", "Нотатки")}
                   multiline
                   rows={12}
                   value={selectedCharacter.notes}
@@ -2948,14 +3070,16 @@ export function RosterApp({
         ) : (
           <div className="mx-auto mt-16 max-w-2xl rounded-[1.9rem] border border-[var(--line-strong)] bg-[var(--panel)] px-6 py-12 text-center shadow-[0_30px_120px_rgba(3,6,10,0.36)]">
             <p className="text-[0.78rem] uppercase tracking-[0.34em] text-[var(--ink-faint)]">
-              Empty Hangar
+              {lt("Empty Hangar", "Порожній ангар")}
             </p>
             <h2 className="mt-4 font-display text-3xl uppercase tracking-[0.14em] text-[var(--paper)]">
-              No character sheets in the ledger
+              {lt("There are no character sheets in the ledger", "У журналі немає аркушів персонажів")}
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-[var(--ink-muted)]">
-              Create a new dossier and start capturing inventory, wounds, alliances,
-              and station rumors in one place.
+              {lt(
+                "Create a new dossier and start keeping gear, injuries, alliances, and station rumors in one place.",
+                "Створіть нове досьє й почніть зберігати спорядження, поранення, союзи та станційні чутки в одному місці.",
+              )}
             </p>
             <button
               type="button"
@@ -2965,10 +3089,10 @@ export function RosterApp({
                   const created = await createCharacterAction();
                   setCharacters([created]);
                   navigateToPanel(created.id);
-                }, "New sheet opened.");
+                }, lt("New sheet opened.", "Новий аркуш відкрито."));
               }}
             >
-              Create First Sheet
+              {lt("Create the First Sheet", "Створити перший аркуш")}
             </button>
           </div>
         )}
@@ -2992,7 +3116,7 @@ export function RosterApp({
             });
             patchCharacter(updated);
             setDrawerKind(null);
-          }, "Inventory updated.");
+          }, lt("Inventory updated.", "Інвентар оновлено."));
         }}
       />
       <ConfirmRemovalModal
@@ -3002,7 +3126,7 @@ export function RosterApp({
       />
       <ConditionModifierModal
         key={`${selectedCharacter?.id ?? "none"}-${conditionModifierModalState?.filterTarget ?? "all"}-${conditionModifierModalState?.initialTarget ?? "hitPoints"}`}
-        characterName={selectedCharacter?.name ?? "current explorer"}
+        characterName={selectedCharacter?.name ?? lt("the current explorer", "поточного дослідника")}
         isOpen={Boolean(selectedCharacter && conditionModifierModalState)}
         modalState={conditionModifierModalState}
         modifiers={selectedCharacter?.conditionModifiers ?? []}
@@ -3018,7 +3142,7 @@ export function RosterApp({
               ...input,
             });
             patchCharacter(updated);
-          }, "Condition modifier added.");
+          }, lt("Condition modifier added.", "Модифікатор стану додано."));
         }}
         onDelete={(modifier) => requestConditionModifierRemoval(modifier)}
         onUpdate={(modifier, input) => {
@@ -3028,7 +3152,7 @@ export function RosterApp({
               ...input,
             });
             patchCharacter(updated);
-          }, "Condition modifier updated.");
+          }, lt("Condition modifier updated.", "Модифікатор стану оновлено."));
         }}
       />
       <BirrAdjustmentModal
@@ -3051,6 +3175,8 @@ function WeaponCard({
   onDelete: () => void;
   weapon: CharacterWeaponRecord;
 }) {
+  const { t } = useTranslation();
+  const { lt } = useLocaleText();
   return (
     <div className="rounded-[1.45rem] border border-[var(--line-soft)] bg-[var(--panel-soft)] p-4">
       <div className="mb-3 flex justify-end">
@@ -3059,57 +3185,57 @@ function WeaponCard({
           className="text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)]"
           onClick={onDelete}
         >
-          Remove
+          {t("common.actions.remove")}
         </button>
       </div>
       <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_110px_110px_110px] xl:grid-cols-[minmax(0,1fr)_110px_110px_110px_110px_140px]">
         <SavableTextField
-          label="Weapon"
+          label={lt("Weapon", "Зброя")}
           value={weapon.name}
           onCommit={(value) => onCommit("name", value)}
         />
         <SavableNumberField
-          label="Bonus"
+          label={lt("Bonus", "Бонус")}
           min={-2}
           max={8}
           value={weapon.bonus}
           onCommit={(value) => onCommit("bonus", value)}
         />
         <SavableNumberField
-          label="Init"
+          label={lt("Initiative", "Ініціатива")}
           min={-2}
           max={8}
           value={weapon.initiative}
           onCommit={(value) => onCommit("initiative", value)}
         />
         <SavableNumberField
-          label="Damage"
+          label={lt("Damage", "Шкода")}
           min={0}
           max={12}
           value={weapon.damage}
           onCommit={(value) => onCommit("damage", value)}
         />
         <SavableTextField
-          label="Crit"
+          label={lt("Crit", "Крит")}
           value={weapon.crit}
           onCommit={(value) => onCommit("crit", value)}
         />
         <SavableTextField
-          label="Range"
+          label={lt("Range", "Дальність")}
           value={weapon.range}
           onCommit={(value) => onCommit("range", value)}
         />
       </div>
       <div className="mt-4 grid gap-4 md:grid-cols-[140px_minmax(0,1fr)]">
         <SavableNumberField
-          label="Reloads"
+          label={lt("Reloads", "Перезаряджання")}
           min={0}
           max={6}
           value={weapon.reloads}
           onCommit={(value) => onCommit("reloads", value)}
         />
         <SavableTextField
-          label="Comments"
+          label={lt("Comments", "Коментарі")}
           multiline
           rows={3}
           value={weapon.comments}
@@ -3131,6 +3257,8 @@ function PresetDrawer({
   onClose: () => void;
   onPick: (kind: InventoryKind, presetId: string) => void;
 }) {
+  const { t } = useTranslation();
+  const { lt } = useLocaleText();
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
 
@@ -3139,7 +3267,8 @@ function PresetDrawer({
   }
 
   const query = deferredSearch.trim().toLowerCase();
-  const filteredCatalog = catalog.filter((preset) => {
+  const localizedCatalog = catalog.map(getLocalizedInventoryPreset);
+  const filteredCatalog = localizedCatalog.filter((preset) => {
     if (preset.kind !== kind) {
       return false;
     }
@@ -3157,21 +3286,25 @@ function PresetDrawer({
         <div className="mb-4 flex items-start justify-between gap-4">
           <div className="space-y-1">
             <p className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
-              Preset Catalog
+              {lt("Preset Catalog", "Каталог шаблонів")}
             </p>
             <h2 className="font-display text-2xl uppercase tracking-[0.14em] text-[var(--paper)]">
-              Add {kind === "weapon" ? "Weapon" : kind === "gear" ? "Gear" : "Tiny Item"}
+              {kind === "weapon"
+                ? lt("Add weapon", "Додати зброю")
+                : kind === "gear"
+                  ? lt("Add gear", "Додати спорядження")
+                  : lt("Add tiny item", "Додати дрібницю")}
             </h2>
           </div>
           <button type="button" className="coriolis-chip" onClick={onClose}>
-            Close
+            {t("common.actions.close")}
           </button>
         </div>
 
         <input
           className="coriolis-input mb-4"
           value={search}
-          placeholder="Search the catalog"
+          placeholder={lt("Search the catalog", "Пошук у каталозі")}
           onChange={(event) => setSearch(event.target.value)}
         />
 
@@ -3193,15 +3326,17 @@ function PresetDrawer({
                 </p>
               </div>
               <span className="rounded-full border border-[var(--line-soft)] px-3 py-1 text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)]">
-                Add
+                {t("common.actions.add")}
               </span>
             </button>
           ))}
 
           {filteredCatalog.length === 0 ? (
             <div className="rounded-[1.3rem] border border-dashed border-[var(--line-soft)] px-4 py-6 text-sm text-[var(--ink-muted)]">
-              No presets matched that search. Try a broader term or use one of the
-              custom entries.
+              {lt(
+                "No presets match this query. Try a broader term or one of your custom variants.",
+                "Немає шаблонів, що відповідають цьому запиту. Спробуйте ширший термін або один із власних варіантів.",
+              )}
             </div>
           ) : null}
         </div>

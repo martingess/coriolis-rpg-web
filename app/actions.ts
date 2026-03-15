@@ -163,8 +163,11 @@ export async function updateTeamFieldAction(input: {
 export async function createTeamRepeaterItemAction(input: {
   teamId: string;
   kind: Exclude<TeamRepeaterKind, "crewPosition">;
+  parentBeatId?: string | null;
 }) {
-  const team = await createTeamRepeaterItem(input.teamId, input.kind);
+  const team = await createTeamRepeaterItem(input.teamId, input.kind, {
+    parentBeatId: input.parentBeatId,
+  });
   revalidatePath("/");
   return team;
 }

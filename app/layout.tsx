@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import { Exo_2, Marcellus_SC } from "next/font/google";
+
+import { I18nProvider } from "@/components/i18n-provider";
+
 import "./globals.css";
 
 const exo = Exo_2({
@@ -14,8 +17,8 @@ const marcellus = Marcellus_SC({
 });
 
 export const metadata: Metadata = {
-  title: "Coriolis Character Dossier",
-  description: "Interactive character roster for Coriolis.",
+  title: "Coriolis Dossier",
+  description: "Interactive character and crew roster for Coriolis.",
 };
 
 export default function RootLayout({
@@ -26,7 +29,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${exo.variable} ${marcellus.variable} antialiased`}>
-        {children}
+        <I18nProvider>{children}</I18nProvider>
       </body>
     </html>
   );

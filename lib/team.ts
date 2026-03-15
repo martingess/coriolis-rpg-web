@@ -26,9 +26,7 @@ const teamInclude = {
     },
   },
   storyBeats: {
-    orderBy: {
-      order: "asc" as const,
-    },
+    orderBy: [{ order: "asc" as const }, { createdAt: "asc" as const }],
   },
   notes: {
     orderBy: {
@@ -112,6 +110,7 @@ function serializeTeam(team: TeamWithRelations): TeamRecord {
     storyBeats: team.storyBeats.map((beat) => ({
       id: beat.id,
       order: beat.order,
+      parentBeatId: beat.parentBeatId,
       title: beat.title,
       description: beat.description,
       createdAt: beat.createdAt.toISOString(),
@@ -223,20 +222,63 @@ async function ensureTeam(client: PrismaClient = prisma) {
   return team ?? currentTeam;
 }
 
-async function getNextOrder(
+function normalizeOptionalId(rawValue: string | number) {
+  const nextId = String(rawValue).trim();
+  return nextId || null;
+}
+
+async function getHighestOrder(
   teamId: string,
   kind: Exclude<TeamRepeaterKind, "crewPosition">,
   client: PrismaClient,
+  input: {
+    parentBeatId?: string | null;
+  } = {},
 ) {
   switch (kind) {
-    case "storyBeat":
-      return client.teamStoryBeat.count({ where: { teamId } });
-    case "note":
-      return client.teamNote.count({ where: { teamId } });
-    case "knownFace":
-      return client.teamKnownFace.count({ where: { teamId } });
-    case "factionTie":
-      return client.teamFactionTie.count({ where: { teamId } });
+    case "storyBeat": {
+      const result = await client.teamStoryBeat.aggregate({
+        where: {
+          teamId,
+          parentBeatId: input.parentBeatId ?? null,
+        },
+        _max: {
+          order: true,
+        },
+      });
+
+      return result._max.order ?? 0;
+    }
+    case "note": {
+      const result = await client.teamNote.aggregate({
+        where: { teamId },
+        _max: {
+          order: true,
+        },
+      });
+
+      return result._max.order ?? 0;
+    }
+    case "knownFace": {
+      const result = await client.teamKnownFace.aggregate({
+        where: { teamId },
+        _max: {
+          order: true,
+        },
+      });
+
+      return result._max.order ?? 0;
+    }
+    case "factionTie": {
+      const result = await client.teamFactionTie.aggregate({
+        where: { teamId },
+        _max: {
+          order: true,
+        },
+      });
+
+      return result._max.order ?? 0;
+    }
   }
 }
 
@@ -244,7 +286,7 @@ async function parseOptionalCharacterId(
   rawValue: string | number,
   client: PrismaClient,
 ) {
-  const nextId = String(rawValue).trim();
+  const nextId = normalizeOptionalId(rawValue);
 
   if (!nextId) {
     return null;
@@ -264,6 +306,63 @@ async function parseOptionalCharacterId(
   }
 
   return character.id;
+}
+
+async function parseOptionalStoryBeatParentId(
+  rawValue: string | number,
+  teamId: string,
+  client: PrismaClient,
+  storyBeatId?: string,
+) {
+  const nextParentBeatId = normalizeOptionalId(rawValue);
+
+  if (!nextParentBeatId) {
+    return null;
+  }
+
+  if (storyBeatId && nextParentBeatId === storyBeatId) {
+    throw new Error("A story point cannot be its own parent.");
+  }
+
+  const parentBeat = await client.teamStoryBeat.findUnique({
+    where: {
+      id: nextParentBeatId,
+    },
+    select: {
+      id: true,
+      teamId: true,
+      parentBeatId: true,
+    },
+  });
+
+  if (!parentBeat || parentBeat.teamId !== teamId) {
+    throw new Error("Parent story points must belong to the same team timeline.");
+  }
+
+  if (!storyBeatId) {
+    return parentBeat.id;
+  }
+
+  let currentAncestorId = parentBeat.parentBeatId;
+
+  while (currentAncestorId) {
+    if (currentAncestorId === storyBeatId) {
+      throw new Error("A story point cannot be nested inside one of its own sub-points.");
+    }
+
+    const ancestorBeat = await client.teamStoryBeat.findUnique({
+      where: {
+        id: currentAncestorId,
+      },
+      select: {
+        parentBeatId: true,
+      },
+    });
+
+    currentAncestorId = ancestorBeat?.parentBeatId ?? null;
+  }
+
+  return parentBeat.id;
 }
 
 async function getUniqueCharacterName(baseName: string, client: PrismaClient) {
@@ -332,10 +431,20 @@ export async function updateTeamField(
 export async function createTeamRepeaterItem(
   teamId: string,
   kind: Exclude<TeamRepeaterKind, "crewPosition">,
+  input: {
+    parentBeatId?: string | null;
+  } = {},
   client: PrismaClient = prisma,
 ) {
   await ensureTeam(client);
-  const order = (await getNextOrder(teamId, kind, client)) + 1;
+  const parentBeatId =
+    kind === "storyBeat" && input.parentBeatId
+      ? await parseOptionalStoryBeatParentId(input.parentBeatId, teamId, client)
+      : null;
+  const order =
+    (await getHighestOrder(teamId, kind, client, {
+      parentBeatId,
+    })) + 1;
 
   switch (kind) {
     case "storyBeat":
@@ -343,6 +452,7 @@ export async function createTeamRepeaterItem(
         data: {
           teamId,
           order,
+          parentBeatId,
         },
       });
       break;
@@ -441,13 +551,37 @@ export async function updateTeamRepeaterField(
     case "storyBeat": {
       const storyBeat = await client.teamStoryBeat.findUniqueOrThrow({
         where: { id },
+        select: {
+          id: true,
+          order: true,
+          parentBeatId: true,
+          teamId: true,
+        },
       });
       teamId = storyBeat.teamId;
+      const nextParentBeatId =
+        field === "parentBeatId"
+          ? await parseOptionalStoryBeatParentId(value, storyBeat.teamId, client, storyBeat.id)
+          : storyBeat.parentBeatId;
+      const didParentChange = nextParentBeatId !== storyBeat.parentBeatId;
       await client.teamStoryBeat.update({
         where: { id },
         data: {
           ...(field === "title" ? { title: String(value) } : {}),
           ...(field === "description" ? { description: String(value) } : {}),
+          ...(field === "parentBeatId"
+            ? {
+                parentBeatId: nextParentBeatId,
+                ...(didParentChange
+                  ? {
+                      order:
+                        (await getHighestOrder(storyBeat.teamId, "storyBeat", client, {
+                          parentBeatId: nextParentBeatId,
+                        })) + 1,
+                    }
+                  : {}),
+              }
+            : {}),
         },
       });
       break;

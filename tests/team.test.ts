@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   createTeamRepeaterItem,
+  deleteTeamRepeaterItem,
   getTeam,
   promoteKnownFaceToCharacter,
   updateTeamRepeaterField,
@@ -38,7 +39,7 @@ describe("team dossier behavior", () => {
 
     try {
       const team = await getTeam(client);
-      const withKnownFace = await createTeamRepeaterItem(team.id, "knownFace", client);
+      const withKnownFace = await createTeamRepeaterItem(team.id, "knownFace", {}, client);
       const knownFaceId = withKnownFace.knownFaces[0]?.id;
 
       if (!knownFaceId) {
@@ -67,6 +68,70 @@ describe("team dossier behavior", () => {
       const persistedKnownFace = result.team.knownFaces.find((face) => face.id === knownFaceId);
       expect(persistedKnownFace?.promotedCharacterId).toBe(result.character.id);
       expect(await client.character.count()).toBe(1);
+    } finally {
+      await client.$disconnect();
+    }
+  });
+
+  it("supports nested story points and prevents cyclical parenting", async () => {
+    const client = await createTestClient();
+
+    try {
+      const team = await getTeam(client);
+      const withRootBeat = await createTeamRepeaterItem(team.id, "storyBeat", {}, client);
+      const rootBeatId = withRootBeat.storyBeats[0]?.id;
+
+      if (!rootBeatId) {
+        throw new Error("Expected a root story point to be created.");
+      }
+
+      const withChildBeat = await createTeamRepeaterItem(
+        team.id,
+        "storyBeat",
+        { parentBeatId: rootBeatId },
+        client,
+      );
+      const childBeat = withChildBeat.storyBeats.find((beat) => beat.parentBeatId === rootBeatId);
+
+      if (!childBeat) {
+        throw new Error("Expected a nested story point to be created.");
+      }
+
+      expect(childBeat.parentBeatId).toBe(rootBeatId);
+
+      await expect(
+        updateTeamRepeaterField("storyBeat", rootBeatId, "parentBeatId", childBeat.id, client),
+      ).rejects.toThrow(/sub-points/i);
+
+      const detachedTimeline = await updateTeamRepeaterField(
+        "storyBeat",
+        childBeat.id,
+        "parentBeatId",
+        "",
+        client,
+      );
+
+      expect(
+        detachedTimeline.storyBeats.find((beat) => beat.id === childBeat.id)?.parentBeatId,
+      ).toBeNull();
+
+      const reattachedTimeline = await updateTeamRepeaterField(
+        "storyBeat",
+        childBeat.id,
+        "parentBeatId",
+        rootBeatId,
+        client,
+      );
+
+      expect(
+        reattachedTimeline.storyBeats.find((beat) => beat.id === childBeat.id)?.parentBeatId,
+      ).toBe(rootBeatId);
+
+      const afterRootRemoval = await deleteTeamRepeaterItem("storyBeat", rootBeatId, client);
+
+      expect(
+        afterRootRemoval.storyBeats.find((beat) => beat.id === childBeat.id)?.parentBeatId,
+      ).toBeNull();
     } finally {
       await client.$disconnect();
     }

@@ -1,17 +1,28 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 
 import { SectionCard } from "@/components/field-controls";
+import type { AppLanguage } from "@/lib/i18n";
 import type { TeamStoryBeatRecord } from "@/lib/team-types";
+import { useLocaleText } from "@/lib/use-locale-text";
+
+type StoryBeatField = "title" | "description" | "parentBeatId";
 
 type TeamStoryTimelineProps = {
   storyBeats: TeamStoryBeatRecord[];
-  onCreateBeat: () => void;
+  onCreateBeat: (parentBeatId?: string) => void;
   onRemoveBeat: (beatId: string) => void;
   onUpdateBeat: (
     beatId: string,
-    field: "title" | "description",
+    field: StoryBeatField,
     value: string,
   ) => void;
 };
@@ -26,26 +37,148 @@ type InlineStoryBeatFieldProps = {
   value: string;
 };
 
-const TIMELINE_PREVIEW_LIMIT = 5;
+type StoryBeatNode = {
+  beat: TeamStoryBeatRecord;
+  children: StoryBeatNode[];
+  depth: number;
+  path: number[];
+};
 
-function formatBeatIndex(index: number) {
-  return `Beat ${String(index + 1).padStart(2, "0")}`;
+type StoryTimelineBranchProps = {
+  ariaLabel?: string;
+  collapsedBeatIds: Set<string>;
+  isNested?: boolean;
+  language: AppLanguage;
+  latestBeatId: string | null;
+  lt: (english: string, ukrainian: string) => string;
+  nodes: StoryBeatNode[];
+  onCreateBeat: (parentBeatId?: string) => void;
+  onRemoveBeat: (beatId: string) => void;
+  onToggleChildren: (beatId: string) => void;
+  onUpdateBeat: (
+    beatId: string,
+    field: StoryBeatField,
+    value: string,
+  ) => void;
+};
+
+const TIMELINE_PREVIEW_ROOT_LIMIT = 5;
+
+function parseStoryBeatDate(value: string) {
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
-function formatBeatCreatedAt(value: string) {
+function compareStoryBeats(left: TeamStoryBeatRecord, right: TeamStoryBeatRecord) {
+  if (left.order !== right.order) {
+    return left.order - right.order;
+  }
+
+  const dateDifference = parseStoryBeatDate(left.createdAt) - parseStoryBeatDate(right.createdAt);
+
+  if (dateDifference !== 0) {
+    return dateDifference;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+function formatBeatIndex(
+  path: number[],
+  lt: (english: string, ukrainian: string) => string,
+) {
+  const segments = path.map((segment, index) =>
+    index === 0 ? String(segment).padStart(2, "0") : String(segment),
+  );
+
+  return lt(`Point ${segments.join(".")}`, `Пункт ${segments.join(".")}`);
+}
+
+function formatBeatCreatedAt(
+  value: string,
+  language: AppLanguage,
+  lt: (english: string, ukrainian: string) => string,
+) {
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    return "Creation time unknown";
+    return lt("Creation time unknown", "Час створення невідомий");
   }
 
-  return new Intl.DateTimeFormat("en-GB", {
+  return new Intl.DateTimeFormat(language === "uk" ? "uk-UA" : "en-GB", {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
     month: "short",
     year: "numeric",
   }).format(date);
+}
+
+function buildStoryBeatTree(storyBeats: TeamStoryBeatRecord[]) {
+  const sortedBeats = [...storyBeats].sort(compareStoryBeats);
+  const nodesById = new Map<string, StoryBeatNode>(
+    sortedBeats.map((beat) => [
+      beat.id,
+      {
+        beat,
+        children: [],
+        depth: 0,
+        path: [],
+      },
+    ]),
+  );
+  const rootNodes: StoryBeatNode[] = [];
+
+  for (const beat of sortedBeats) {
+    const node = nodesById.get(beat.id);
+
+    if (!node) {
+      continue;
+    }
+
+    const parentNode = beat.parentBeatId ? nodesById.get(beat.parentBeatId) : null;
+
+    if (parentNode && parentNode.beat.id !== beat.id) {
+      parentNode.children.push(node);
+      continue;
+    }
+
+    rootNodes.push(node);
+  }
+
+  function assignMetadata(nodes: StoryBeatNode[], depth: number, parentPath: number[]) {
+    nodes.sort((left, right) => compareStoryBeats(left.beat, right.beat));
+    nodes.forEach((node, index) => {
+      node.depth = depth;
+      node.path = [...parentPath, index + 1];
+      assignMetadata(node.children, depth + 1, node.path);
+    });
+  }
+
+  assignMetadata(rootNodes, 0, []);
+
+  return rootNodes;
+}
+
+function toDisplayTree(nodes: StoryBeatNode[]): StoryBeatNode[] {
+  return [...nodes].reverse().map((node) => ({
+    ...node,
+    children: toDisplayTree(node.children),
+  }));
+}
+
+function getLatestBeatId(storyBeats: TeamStoryBeatRecord[]) {
+  const latestBeat = [...storyBeats].sort((left, right) => {
+    const dateDifference = parseStoryBeatDate(left.createdAt) - parseStoryBeatDate(right.createdAt);
+
+    if (dateDifference !== 0) {
+      return dateDifference;
+    }
+
+    return compareStoryBeats(left, right);
+  }).at(-1);
+
+  return latestBeat?.id ?? null;
 }
 
 function InlineStoryBeatField({
@@ -132,109 +265,143 @@ function InlineStoryBeatField({
   );
 }
 
-type TimelineEntry = {
-  beat: TeamStoryBeatRecord;
-  displayIndex: number;
-  isLatest: boolean;
-};
-
-type StoryTimelineListProps = {
-  ariaLabel: string;
-  entries: TimelineEntry[];
-  onRemoveBeat: (beatId: string) => void;
-  onUpdateBeat: (
-    beatId: string,
-    field: "title" | "description",
-    value: string,
-  ) => void;
-};
-
-function StoryTimelineList({
+function StoryTimelineBranch({
   ariaLabel,
-  entries,
+  collapsedBeatIds,
+  isNested = false,
+  language,
+  latestBeatId,
+  lt,
+  nodes,
+  onCreateBeat,
   onRemoveBeat,
+  onToggleChildren,
   onUpdateBeat,
-}: StoryTimelineListProps) {
-  if (entries.length === 0) {
-    return (
-      <div className="coriolis-timeline__empty">
-        <div className="coriolis-timeline__meta">
-          <span className="coriolis-timeline__index">No Beats Yet</span>
-          <span className="coriolis-timeline__date">Creation date appears here</span>
-        </div>
-        <div className="coriolis-timeline__axis" aria-hidden="true">
-          <span className="coriolis-timeline__connector" />
-          <span className="coriolis-timeline__dot coriolis-timeline__dot--active" />
-        </div>
-        <div className="coriolis-timeline__card coriolis-timeline__card--active">
-          <p className="text-sm uppercase tracking-[0.28em] text-[var(--ink-faint)]">
-            Bridge Memory
-          </p>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--ink-muted)]">
-            Pin major jumps, betrayals, discoveries, and debts paid in blood or
-            birr. Each beat edits in place, so the timeline stays readable while
-            the crew keeps writing.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
+}: StoryTimelineBranchProps) {
   return (
-    <ol className="coriolis-timeline__list" aria-label={ariaLabel}>
-      {entries.map(({ beat, displayIndex, isLatest }) => (
-        <li key={beat.id} className="coriolis-timeline__item">
-          <div className="coriolis-timeline__meta">
-            <span className="coriolis-timeline__index">
-              {formatBeatIndex(displayIndex - 1)}
-            </span>
-            <span className="coriolis-timeline__date">
-              {formatBeatCreatedAt(beat.createdAt)}
-            </span>
-          </div>
+    <ol
+      className={`coriolis-timeline__list ${isNested ? "coriolis-timeline__list--nested" : ""}`}
+      aria-label={ariaLabel}
+    >
+      {nodes.map((node) => {
+        const isLatest = node.beat.id === latestBeatId;
+        const hasChildren = node.children.length > 0;
+        const areChildrenCollapsed = collapsedBeatIds.has(node.beat.id);
+        const childLabel =
+          node.children.length === 1
+            ? lt("1 sub-point", "1 підпункт")
+            : lt(`${node.children.length} sub-points`, `${node.children.length} підпунктів`);
+        const pointLabel = formatBeatIndex(node.path, lt);
 
-          <div className="coriolis-timeline__axis" aria-hidden="true">
-            <span className="coriolis-timeline__connector" />
-            <span
-              className={`coriolis-timeline__dot ${
-                isLatest ? "coriolis-timeline__dot--active" : ""
-              }`}
-            />
-          </div>
-
-          <article
-            className={`coriolis-timeline__card ${
-              isLatest ? "coriolis-timeline__card--active" : ""
-            }`}
-          >
-            <div className="coriolis-timeline__card-header">
-              <InlineStoryBeatField
-                ariaLabel={`${formatBeatIndex(displayIndex - 1)} title`}
-                placeholder="Name this beat"
-                value={beat.title}
-                onCommit={(value) => onUpdateBeat(beat.id, "title", value)}
-              />
-
-              <button
-                type="button"
-                className="coriolis-timeline__remove"
-                onPointerDown={(event) => event.preventDefault()}
-                onClick={() => onRemoveBeat(beat.id)}
-              >
-                Remove
-              </button>
+        return (
+          <li key={node.beat.id} className="coriolis-timeline__item">
+            <div className="coriolis-timeline__meta">
+              <span className="coriolis-timeline__index">{pointLabel}</span>
+              <span className="coriolis-timeline__date">
+                {formatBeatCreatedAt(node.beat.createdAt, language, lt)}
+              </span>
             </div>
 
-            <InlineStoryBeatField
-              ariaLabel={`${formatBeatIndex(displayIndex - 1)} description`}
-              multiline
-              placeholder="What changed for the crew?"
-              value={beat.description}
-              onCommit={(value) => onUpdateBeat(beat.id, "description", value)}
-            />
-          </article>
-        </li>
-      ))}
+            <div className="coriolis-timeline__axis" aria-hidden="true">
+              <span className="coriolis-timeline__connector" />
+              <span
+                className={`coriolis-timeline__dot ${
+                  isLatest ? "coriolis-timeline__dot--active" : ""
+                }`}
+              />
+            </div>
+
+            <article
+              className={`coriolis-timeline__card ${
+                isLatest ? "coriolis-timeline__card--active" : ""
+              } ${node.depth > 0 ? "coriolis-timeline__card--nested" : ""}`}
+            >
+              <div className="coriolis-timeline__card-header">
+                <InlineStoryBeatField
+                  ariaLabel={`${pointLabel} ${lt("title", "назва")}`}
+                  placeholder={lt("Name this story point", "Назвіть цю подію")}
+                  value={node.beat.title}
+                  onCommit={(value) => onUpdateBeat(node.beat.id, "title", value)}
+                />
+
+                <div className="coriolis-timeline__actions">
+                  {hasChildren ? (
+                    <button
+                      type="button"
+                      className="coriolis-timeline__action coriolis-timeline__action--ghost"
+                      aria-expanded={!areChildrenCollapsed}
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={() => onToggleChildren(node.beat.id)}
+                    >
+                      {areChildrenCollapsed
+                        ? lt("Show Sub-points", "Показати підпункти")
+                        : lt("Hide Sub-points", "Сховати підпункти")}
+                    </button>
+                  ) : null}
+                  {node.depth === 0 ? (
+                    <button
+                      type="button"
+                      className="coriolis-timeline__action"
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={() => onCreateBeat(node.beat.id)}
+                    >
+                      {lt("Add Sub-point", "Додати підпункт")}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="coriolis-timeline__remove"
+                    onPointerDown={(event) => event.preventDefault()}
+                    onClick={() => onRemoveBeat(node.beat.id)}
+                  >
+                    {lt("Remove", "Прибрати")}
+                  </button>
+                </div>
+              </div>
+
+              <InlineStoryBeatField
+                ariaLabel={`${pointLabel} ${lt("description", "опис")}`}
+                multiline
+                placeholder={lt(
+                  "What changed for the crew or this branch of the story?",
+                  "Що змінилося для екіпажу або цієї гілки історії?",
+                )}
+                value={node.beat.description}
+                onCommit={(value) => onUpdateBeat(node.beat.id, "description", value)}
+              />
+
+              {hasChildren ? (
+                <section className="coriolis-timeline__children-shell" aria-label={childLabel}>
+                  <div className="coriolis-timeline__children-header">
+                    <p className="coriolis-timeline__children-label">{lt("Branch Thread", "Гілка сюжету")}</p>
+                    <p className="coriolis-timeline__children-count">{childLabel}</p>
+                  </div>
+                  {areChildrenCollapsed ? (
+                    <p className="coriolis-timeline__children-collapsed">
+                      {lt("Sub-points are hidden for this branch.", "Підпункти для цієї гілки приховані.")}
+                    </p>
+                  ) : (
+                    <div className="coriolis-timeline__children">
+                      <StoryTimelineBranch
+                        collapsedBeatIds={collapsedBeatIds}
+                        isNested
+                        language={language}
+                        latestBeatId={latestBeatId}
+                        lt={lt}
+                        nodes={node.children}
+                        onCreateBeat={onCreateBeat}
+                        onRemoveBeat={onRemoveBeat}
+                        onToggleChildren={onToggleChildren}
+                        onUpdateBeat={onUpdateBeat}
+                      />
+                    </div>
+                  )}
+                </section>
+              ) : null}
+            </article>
+          </li>
+        );
+      })}
     </ol>
   );
 }
@@ -245,17 +412,22 @@ export function TeamStoryTimeline({
   onRemoveBeat,
   onUpdateBeat,
 }: TeamStoryTimelineProps) {
+  const { language, lt } = useLocaleText();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [collapsedBeatIds, setCollapsedBeatIds] = useState<string[]>([]);
   const dialogTitleId = useId();
-  const timelineEntries = [...storyBeats]
-    .reverse()
-    .map((beat, reversedIndex) => ({
-      beat,
-      displayIndex: storyBeats.length - reversedIndex,
-      isLatest: reversedIndex === 0,
-    }));
-  const previewEntries = timelineEntries.slice(0, TIMELINE_PREVIEW_LIMIT);
-  const hasHiddenEntries = timelineEntries.length > TIMELINE_PREVIEW_LIMIT;
+  const rootNodes = buildStoryBeatTree(storyBeats);
+  const timelineRoots = toDisplayTree(rootNodes);
+  const previewRoots = timelineRoots.slice(0, TIMELINE_PREVIEW_ROOT_LIMIT);
+  const hasHiddenRoots = timelineRoots.length > TIMELINE_PREVIEW_ROOT_LIMIT;
+  const latestBeatId = getLatestBeatId(storyBeats);
+  const collapsedBeatIdSet = useMemo(() => {
+    const availableBeatIds = new Set(storyBeats.map((beat) => beat.id));
+
+    return new Set(
+      collapsedBeatIds.filter((beatId) => availableBeatIds.has(beatId)),
+    );
+  }, [collapsedBeatIds, storyBeats]);
 
   useEffect(() => {
     if (!isModalOpen) {
@@ -278,34 +450,72 @@ export function TeamStoryTimeline({
     };
   }, [isModalOpen]);
 
+  function toggleChildren(beatId: string) {
+    setCollapsedBeatIds((currentIds) =>
+      currentIds.includes(beatId)
+        ? currentIds.filter((currentBeatId) => currentBeatId !== beatId)
+        : [...currentIds, beatId],
+    );
+  }
+
   return (
     <>
       <SectionCard
         id="team-timeline"
-        title="Timeline"
-        eyebrow="Major Events"
+        title={lt("Timeline", "Хронологія")}
+        eyebrow={lt("Major Events", "Ключові події")}
         className="xl:col-span-2"
         actions={
-          <button type="button" className="coriolis-chip" onClick={onCreateBeat}>
-            Add Beat
+          <button type="button" className="coriolis-chip" onClick={() => onCreateBeat()}>
+            {lt("Add Story Point", "Додати подію")}
           </button>
         }
       >
-        <StoryTimelineList
-          ariaLabel="Crew timeline, latest first"
-          entries={previewEntries}
-          onRemoveBeat={onRemoveBeat}
-          onUpdateBeat={onUpdateBeat}
-        />
+        {timelineRoots.length === 0 ? (
+          <div className="coriolis-timeline__empty">
+            <div className="coriolis-timeline__meta">
+              <span className="coriolis-timeline__index">{lt("No Story Points Yet", "Подій історії ще немає")}</span>
+              <span className="coriolis-timeline__date">{lt("Creation date appears here", "Тут з'явиться дата створення")}</span>
+            </div>
+            <div className="coriolis-timeline__axis" aria-hidden="true">
+              <span className="coriolis-timeline__connector" />
+              <span className="coriolis-timeline__dot coriolis-timeline__dot--active" />
+            </div>
+            <div className="coriolis-timeline__card coriolis-timeline__card--active">
+              <p className="text-sm uppercase tracking-[0.28em] text-[var(--ink-faint)]">
+                {lt("Bridge Memory", "Пам'ять містка")}
+              </p>
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--ink-muted)]">
+                {lt(
+                  "Capture the crew's main story points, then nest the smaller fallout, betrayals, and discoveries underneath them so every arc keeps its own thread.",
+                  "Фіксуйте головні події екіпажу, а під ними вкладайте менші наслідки, зради й відкриття, щоб кожна арка зберігала власну гілку.",
+                )}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <StoryTimelineBranch
+            ariaLabel={lt("Crew timeline with nested story points, latest roots first", "Хронологія екіпажу з вкладеними подіями, новіші гілки показані першими")}
+            collapsedBeatIds={collapsedBeatIdSet}
+            language={language}
+            latestBeatId={latestBeatId}
+            lt={lt}
+            nodes={previewRoots}
+            onCreateBeat={onCreateBeat}
+            onRemoveBeat={onRemoveBeat}
+            onToggleChildren={toggleChildren}
+            onUpdateBeat={onUpdateBeat}
+          />
+        )}
 
-        {hasHiddenEntries ? (
+        {hasHiddenRoots ? (
           <div className="coriolis-timeline__footer">
             <button
               type="button"
               className="coriolis-chip"
               onClick={() => setIsModalOpen(true)}
             >
-              Show all
+              {lt("Show all", "Показати все")}
             </button>
           </div>
         ) : null}
@@ -325,9 +535,9 @@ export function TeamStoryTimeline({
           >
             <div className="coriolis-modal__header">
               <div>
-                <p className="coriolis-modal__eyebrow">Complete Crew History</p>
+                <p className="coriolis-modal__eyebrow">{lt("Complete Crew History", "Повна історія екіпажу")}</p>
                 <h2 id={dialogTitleId} className="coriolis-modal__title">
-                  Full Timeline
+                  {lt("Full Timeline", "Повна хронологія")}
                 </h2>
               </div>
               <button
@@ -335,15 +545,21 @@ export function TeamStoryTimeline({
                 className="coriolis-chip"
                 onClick={() => setIsModalOpen(false)}
               >
-                Close
+                {lt("Close", "Закрити")}
               </button>
             </div>
 
             <div className="coriolis-modal__body">
-              <StoryTimelineList
-                ariaLabel="Full crew timeline, latest first"
-                entries={timelineEntries}
+              <StoryTimelineBranch
+                ariaLabel={lt("Full crew timeline with nested story points", "Повна хронологія екіпажу з вкладеними подіями")}
+                collapsedBeatIds={collapsedBeatIdSet}
+                language={language}
+                latestBeatId={latestBeatId}
+                lt={lt}
+                nodes={timelineRoots}
+                onCreateBeat={onCreateBeat}
                 onRemoveBeat={onRemoveBeat}
+                onToggleChildren={toggleChildren}
                 onUpdateBeat={onUpdateBeat}
               />
             </div>

@@ -7,19 +7,24 @@ import {
   SectionCard,
 } from "@/components/field-controls";
 import { TeamStoryTimeline } from "@/components/team-story-timeline";
+import {
+  getAttributeLabel,
+  getGroupConceptLabel,
+  getSkillLabel,
+  getTeamCrewRoleDescription,
+  getTeamCrewRoleLabel,
+  getTeamFactionStanceLabel,
+  getTeamNoteTagLabel,
+  getTrustLevelLabel,
+} from "@/lib/localization";
 import type { CharacterRecord } from "@/lib/roster-types";
 import {
   groupConceptValues,
   groupTalentOptionsByConcept,
   patronSuggestionsByConcept,
-  teamCrewRoleDescriptions,
-  teamCrewRoleLabels,
   teamCrewRoleValues,
-  teamFactionStanceLabels,
   teamFactionStanceValues,
-  teamNoteTagLabels,
   teamNoteTagValues,
-  trustLevelLabels,
 } from "@/lib/team-types";
 import {
   findBestCharactersByField,
@@ -31,29 +36,42 @@ import type {
   GroupConcept,
   TeamRecord,
 } from "@/lib/team-types";
+import { useLocaleText } from "@/lib/use-locale-text";
 
-export const teamQuickNavSections = [
-  { id: "team-identity", label: "Team Story", eyebrow: "Bridge Dossier" },
-  { id: "team-members", label: "Members", eyebrow: "Crew Grid" },
-  { id: "team-roles", label: "Crew Roles", eyebrow: "Bridge Stations" },
-  { id: "team-ship", label: "Ship", eyebrow: "Heart of the Crew" },
-  { id: "team-mission", label: "Mission Board", eyebrow: "Current Arc" },
-  { id: "team-factions", label: "Faction Ties", eyebrow: "Heat & Leverage" },
-  { id: "team-timeline", label: "Timeline", eyebrow: "Major Events" },
-  { id: "team-faces", label: "Known Faces", eyebrow: "Shared NPC Ledger" },
-  { id: "team-notes", label: "Typed Notes", eyebrow: "Operational Memory" },
-] as const;
+export type TeamQuickNavSectionId =
+  | "team-identity"
+  | "team-members"
+  | "team-roles"
+  | "team-ship"
+  | "team-mission"
+  | "team-factions"
+  | "team-timeline"
+  | "team-faces"
+  | "team-notes";
 
-export type TeamQuickNavSectionId = (typeof teamQuickNavSections)[number]["id"];
+export function getTeamQuickNavSections(
+  lt: (english: string, ukrainian: string) => string,
+) {
+  return [
+    { id: "team-identity", label: lt("Crew Story", "Історія команди"), eyebrow: lt("Bridge Dossier", "Місткове досьє") },
+    { id: "team-members", label: lt("Crew Members", "Учасники"), eyebrow: lt("Crew Grid", "Сітка екіпажу") },
+    { id: "team-roles", label: lt("Crew Roles", "Ролі екіпажу"), eyebrow: lt("Bridge Stations", "Місткові станції") },
+    { id: "team-ship", label: lt("Ship", "Корабель"), eyebrow: lt("Heart of the Crew", "Серце екіпажу") },
+    { id: "team-mission", label: lt("Mission Board", "Дошка місії"), eyebrow: lt("Current Arc", "Поточна арка") },
+    { id: "team-factions", label: lt("Faction Ties", "Зв'язки з фракціями"), eyebrow: lt("Heat & Leverage", "Жар і важелі") },
+    { id: "team-timeline", label: lt("Timeline", "Хронологія"), eyebrow: lt("Major Events", "Ключові події") },
+    { id: "team-faces", label: lt("Known Faces", "Знайомі обличчя"), eyebrow: lt("Shared NPC Registry", "Спільний реєстр NPC") },
+    { id: "team-notes", label: lt("Structured Notes", "Структуровані нотатки"), eyebrow: lt("Operational Memory", "Оперативна пам'ять") },
+  ] as const;
+}
 
 const attributeSpotlightFields: Array<{
   field: keyof CharacterRecord;
-  label: string;
 }> = [
-  { field: "strength", label: "Strength" },
-  { field: "agility", label: "Agility" },
-  { field: "wits", label: "Wits" },
-  { field: "empathy", label: "Empathy" },
+  { field: "strength" },
+  { field: "agility" },
+  { field: "wits" },
+  { field: "empathy" },
 ];
 
 const skillSpotlightFields: Array<{
@@ -66,20 +84,22 @@ const skillSpotlightFields: Array<{
     | "technology"
     | "rangedCombat"
   >;
-  label: string;
 }> = [
-  { field: "observation", label: "Observation" },
-  { field: "pilot", label: "Pilot" },
-  { field: "manipulation", label: "Manipulation" },
-  { field: "command", label: "Command" },
-  { field: "technology", label: "Technology" },
-  { field: "rangedCombat", label: "Ranged Combat" },
+  { field: "observation" },
+  { field: "pilot" },
+  { field: "manipulation" },
+  { field: "command" },
+  { field: "technology" },
+  { field: "rangedCombat" },
 ];
 
 type TeamScreenProps = {
   characters: CharacterRecord[];
   onCreateRepeater: (
     kind: "storyBeat" | "note" | "knownFace" | "factionTie",
+    options?: {
+      parentBeatId?: string;
+    },
   ) => void;
   onKnownFacePortraitUpload: (knownFaceId: string, file: File) => Promise<void> | void;
   onOpenCharacter: (characterId: string) => void;
@@ -126,20 +146,21 @@ export function TeamScreen({
   onUpdateRepeater,
   team,
 }: TeamScreenProps) {
+  const { lt } = useLocaleText();
   const charactersById = new Map(characters.map((character) => [character.id, character]));
   const rolesByCharacterId = new Map<string, string[]>();
 
   for (const crewPosition of team.crewPositions) {
     if (crewPosition.primaryCharacterId) {
       const roles = rolesByCharacterId.get(crewPosition.primaryCharacterId) ?? [];
-      roles.push(teamCrewRoleLabels[crewPosition.role]);
+      roles.push(getTeamCrewRoleLabel(crewPosition.role));
       rolesByCharacterId.set(crewPosition.primaryCharacterId, roles);
     }
   }
 
   const groupConceptOptions = [
-    { value: "", label: "Choose group concept" },
-    ...groupConceptValues.map((value) => ({ value, label: value })),
+    { value: "", label: lt("Choose crew concept", "Оберіть концепт команди") },
+    ...groupConceptValues.map((value) => ({ value, label: getGroupConceptLabel(value) })),
   ];
   const availableGroupTalents =
     groupConceptValues.includes(team.groupConcept as GroupConcept)
@@ -148,10 +169,13 @@ export function TeamScreen({
   const groupTalentOptions = [
     {
       value: "",
-      label: availableGroupTalents.length > 0 ? "Choose group talent" : "Pick a group concept first",
+      label:
+        availableGroupTalents.length > 0
+          ? lt("Choose crew talent", "Оберіть талант команди")
+          : lt("Choose a crew concept first", "Спочатку оберіть концепт команди"),
     },
     ...(!availableGroupTalents.includes(team.groupTalent) && team.groupTalent
-      ? [{ value: team.groupTalent, label: `${team.groupTalent} (Custom)` }]
+      ? [{ value: team.groupTalent, label: lt(`${team.groupTalent} (custom)`, `${team.groupTalent} (власний)`) }]
       : []),
     ...availableGroupTalents.map((value) => ({
       value,
@@ -160,20 +184,20 @@ export function TeamScreen({
   ];
   const stanceOptions = teamFactionStanceValues.map((value) => ({
     value,
-    label: teamFactionStanceLabels[value],
+    label: getTeamFactionStanceLabel(value),
   }));
   const noteTagOptions = teamNoteTagValues.map((value) => ({
     value,
-    label: teamNoteTagLabels[value],
+    label: getTeamNoteTagLabel(value),
   }));
-  const trustOptions = trustLevelLabels.map((label, index) => ({
+  const trustOptions = Array.from({ length: 6 }, (_, index) => ({
     value: String(index),
-    label: `${index} · ${label}`,
+    label: `${index} · ${getTrustLevelLabel(index)}`,
   }));
   const maxHeat = team.factionTies.reduce((highest, tie) => Math.max(highest, tie.heat), 0);
   const suggestionsCopy = joinSuggestions(team.groupConcept);
   const characterSelectOptions = [
-    { value: "", label: "Unassigned" },
+    { value: "", label: lt("Unassigned", "Не призначено") },
     ...characters.map((character) => ({
       value: character.id,
       label: character.name,
@@ -184,21 +208,21 @@ export function TeamScreen({
     <div className="grid grid-cols-1 gap-4 xl:gap-5">
       <SectionCard
         id="team-identity"
-        title="Team Story"
-        eyebrow="Bridge Dossier"
+        title={lt("Crew Story", "Історія команди")}
+        eyebrow={lt("Bridge Dossier", "Місткове досьє")}
         className="xl:col-span-2"
       >
         <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
           <div className="grid gap-4">
             <div className="grid gap-4 md:grid-cols-2">
               <SavableTextField
-                label="Crew Name"
+                label={lt("Crew Name", "Назва екіпажу")}
                 value={team.name}
                 onCommit={(value) => onUpdateField("name", value)}
               />
               <SavableSelectField
-                label="Group Concept"
-                hint="A crew-level choice from Chapter 2."
+                label={lt("Crew Concept", "Концепт команди")}
+                hint={lt("Shared choice from chapter 2.", "Груповий вибір із розділу 2.")}
                 value={team.groupConcept}
                 options={groupConceptOptions}
                 onCommit={(value) => onUpdateField("groupConcept", value)}
@@ -207,46 +231,64 @@ export function TeamScreen({
 
             <div className="grid gap-4 md:grid-cols-2">
               <SavableSelectField
-                label="Group Talent"
-                hint="Filtered to the active group concept when possible."
+                label={lt("Crew Talent", "Талант команди")}
+                hint={lt(
+                  "Filtered by the active crew concept when possible.",
+                  "За можливості фільтрується за активним концептом команди.",
+                )}
                 value={team.groupTalent}
                 options={groupTalentOptions}
                 onCommit={(value) => onUpdateField("groupTalent", value)}
               />
               <SavableTextField
-                label="Crew Manifesto"
-                hint="One sharp line about what binds this crew together."
+                label={lt("Crew Manifesto", "Маніфест екіпажу")}
+                hint={lt(
+                  "One sharp line about what holds this crew together.",
+                  "Один влучний рядок про те, що тримає цю команду разом.",
+                )}
                 value={team.manifesto}
                 onCommit={(value) => onUpdateField("manifesto", value)}
               />
             </div>
 
             <SavableTextField
-              label="Team Story"
+              label={lt("Crew Story", "Історія команди")}
               multiline
               rows={5}
-              hint="Short collective story, origin, and current emotional temperature."
+              hint={lt(
+                "A short shared history, origin, and the crew's current emotional weather.",
+                "Коротка спільна історія, походження й поточний емоційний стан команди.",
+              )}
               value={team.story}
               onCommit={(value) => onUpdateField("story", value)}
             />
 
             <div className="grid gap-4 md:grid-cols-2">
               <SavableTextField
-                label="Patron"
+                label={lt("Patron", "Патрон")}
                 hint={
                   suggestionsCopy
-                    ? `Rulebook ideas: ${suggestionsCopy}`
-                    : "Pick a group concept first to surface rulebook patron ideas."
+                    ? lt(`Rulebook prompts: ${suggestionsCopy}`, `Ідеї з книги правил: ${suggestionsCopy}`)
+                    : lt(
+                        "Choose a crew concept first to reveal patron prompts from the rulebook.",
+                        "Спочатку оберіть концепт команди, щоб побачити ідеї патрона з книги правил.",
+                      )
                 }
                 value={team.patron}
                 onCommit={(value) => onUpdateField("patron", value)}
               />
               <SavableTextField
-                label="Nemesis"
+                label={lt("Nemesis", "Немезида")}
                 hint={
                   suggestionsCopy
-                    ? `Use the same list as a launchpad for crew enemies or rivals.`
-                    : "Pick a group concept first to surface rulebook nemesis ideas."
+                    ? lt(
+                        "Use the same list as a springboard for enemies or rivals of the crew.",
+                        "Використайте той самий список як відправну точку для ворогів або суперників команди.",
+                      )
+                    : lt(
+                        "Choose a crew concept first to reveal nemesis prompts from the rulebook.",
+                        "Спочатку оберіть концепт команди, щоб побачити ідеї немезиди з книги правил.",
+                      )
                 }
                 value={team.nemesis}
                 onCommit={(value) => onUpdateField("nemesis", value)}
@@ -257,42 +299,49 @@ export function TeamScreen({
           <div className="grid gap-4">
             <div className="team-bridge-card">
               <p className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
-                Bridge Readout
+                {lt("Bridge Readout", "Містковий звіт")}
               </p>
               <div className="mt-4 grid grid-cols-2 gap-3">
                 <div className="team-metric">
-                  <span className="team-metric__label">Crew</span>
+                  <span className="team-metric__label">{lt("Crew", "Екіпаж")}</span>
                   <span className="team-metric__value">{characters.length}</span>
                 </div>
                 <div className="team-metric">
-                  <span className="team-metric__label">Known Faces</span>
+                  <span className="team-metric__label">{lt("Known Faces", "Знайомі обличчя")}</span>
                   <span className="team-metric__value">{team.knownFaces.length}</span>
                 </div>
                 <div className="team-metric">
-                  <span className="team-metric__label">Open Notes</span>
+                  <span className="team-metric__label">{lt("Open Notes", "Відкриті нотатки")}</span>
                   <span className="team-metric__value">{team.notes.length}</span>
                 </div>
                 <div className="team-metric">
-                  <span className="team-metric__label">Max Heat</span>
+                  <span className="team-metric__label">{lt("Max Heat", "Макс. жар")}</span>
                   <span className="team-metric__value">{maxHeat}</span>
                 </div>
               </div>
               <div className="mt-5 rounded-[1.2rem] border border-[var(--line-soft)] bg-[color:rgba(8,12,19,0.55)] p-4">
                 <p className="text-[0.68rem] uppercase tracking-[0.3em] text-[var(--ink-faint)]">
-                  Current Pressure
+                  {lt("Current Pressure", "Поточний тиск")}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">
-                  {team.currentGoal || "No mission pinned yet. The bridge is quiet, which means trouble is probably only late."}
+                  {team.currentGoal ||
+                    lt(
+                      "No mission is pinned yet. The bridge is quiet, which usually means trouble is only running late.",
+                      "Жодну місію ще не закріплено. На містку тихо, а це зазвичай означає, що проблеми просто запізнюються.",
+                    )}
                 </p>
               </div>
             </div>
 
             <div className="team-bridge-card">
               <p className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
-                Rulebook Anchor
+                {lt("Rulebook Anchor", "Опора на книгу правил")}
               </p>
               <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">
-                Coriolis treats the crew as a group first: concept, ship, patron, nemesis, and jobs are all shared story pressure.
+                {lt(
+                  "In Coriolis, the crew is treated as a group first: concept, ship, patron, nemesis, and work all create shared story pressure.",
+                  "У Coriolis екіпаж насамперед розглядається як група: концепт, корабель, патрон, немезида та робота створюють спільний сюжетний тиск.",
+                )}
               </p>
             </div>
           </div>
@@ -301,15 +350,15 @@ export function TeamScreen({
 
       <SectionCard
         id="team-members"
-        title="Team Members"
-        eyebrow="Crew Grid"
+        title={lt("Crew Members", "Учасники команди")}
+        eyebrow={lt("Crew Grid", "Сітка екіпажу")}
         className="xl:col-span-2"
       >
         <div className="grid gap-4">
           <div className="grid gap-4 xl:grid-cols-3">
             <div className="rounded-[1.35rem] border border-[var(--line-soft)] bg-[var(--panel-soft)] p-4">
               <p className="text-[0.7rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
-                Best by Attributes
+                {lt("Best by Attributes", "Найкращі за атрибутами")}
               </p>
               <div className="mt-4 grid gap-3">
                 {attributeSpotlightFields.map((entry) => {
@@ -317,11 +366,18 @@ export function TeamScreen({
 
                   return (
                     <div key={entry.field} className="team-readout-row">
-                      <span>{entry.label}</span>
+                      <span>
+                        {getAttributeLabel(
+                          entry.field as Extract<
+                            keyof CharacterRecord,
+                            "strength" | "agility" | "wits" | "empathy"
+                          >,
+                        )}
+                      </span>
                       <span>
                         {bestMatch
                           ? `${formatBestMatchNames(bestMatch.winners)} · ${bestMatch.value}`
-                          : "No crew"}
+                          : lt("No crew", "Немає екіпажу")}
                       </span>
                     </div>
                   );
@@ -331,7 +387,7 @@ export function TeamScreen({
 
             <div className="rounded-[1.35rem] border border-[var(--line-soft)] bg-[var(--panel-soft)] p-4">
               <p className="text-[0.7rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
-                Best by Skills
+                {lt("Best by Skills", "Найкращі за навичками")}
               </p>
               <div className="mt-4 grid gap-3">
                 {skillSpotlightFields.map((entry) => {
@@ -339,13 +395,13 @@ export function TeamScreen({
 
                   return (
                     <div key={entry.field} className="team-readout-row">
-                      <span>{entry.label}</span>
+                      <span>{getSkillLabel(entry.field)}</span>
                       <span>
                         {bestMatch
                           ? `${formatBestMatchNames(bestMatch.winners)} · ${bestMatch.value}`
                           : characters.length > 0
-                            ? "No trained crew"
-                            : "No crew"}
+                            ? lt("No trained crew", "Немає підготовленого екіпажу")
+                            : lt("No crew", "Немає екіпажу")}
                       </span>
                     </div>
                   );
@@ -355,7 +411,7 @@ export function TeamScreen({
 
             <div className="rounded-[1.35rem] border border-[var(--line-soft)] bg-[var(--panel-soft)] p-4">
               <p className="text-[0.7rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
-                Best by Role
+                {lt("Best by Role", "Найкращі за роллю")}
               </p>
               <div className="mt-4 grid gap-3">
                 {teamCrewRoleValues.map((role) => {
@@ -363,13 +419,13 @@ export function TeamScreen({
 
                   return (
                     <div key={role} className="team-readout-row">
-                      <span>{teamCrewRoleLabels[role]}</span>
+                      <span>{getTeamCrewRoleLabel(role)}</span>
                       <span>
                         {bestMatch
                           ? formatBestMatchNames(bestMatch.winners)
                           : characters.length > 0
-                            ? "No trained crew"
-                            : "No crew"}
+                            ? lt("No trained crew", "Немає підготовленого екіпажу")
+                            : lt("No crew", "Немає екіпажу")}
                       </span>
                     </div>
                   );
@@ -406,7 +462,7 @@ export function TeamScreen({
                         <div>
                           <h3 className="text-lg text-[var(--paper)]">{character.name}</h3>
                           <p className="mt-1 text-sm text-[var(--ink-muted)]">
-                            {character.concept || "Concept pending"}
+                            {character.concept || lt("Concept pending", "Концепт ще не вказано")}
                           </p>
                         </div>
                         <button
@@ -414,22 +470,22 @@ export function TeamScreen({
                           className="coriolis-chip px-3 py-2 text-[0.66rem]"
                           onClick={() => onOpenCharacter(character.id)}
                         >
-                          Open Sheet
+                          {lt("Open Sheet", "Відкрити аркуш")}
                         </button>
                       </div>
 
                       <div className="mt-4 grid gap-2 text-sm text-[var(--ink-muted)]">
                         <div className="team-readout-row">
-                          <span>Icon</span>
-                          <span>{character.icon || "Unknown"}</span>
+                          <span>{lt("Icon", "Ікона")}</span>
+                          <span>{character.icon || lt("Unknown", "Невідомо")}</span>
                         </div>
                         <div className="team-readout-row">
-                          <span>Reputation</span>
+                          <span>{lt("Reputation", "Репутація")}</span>
                           <span>{character.reputation}</span>
                         </div>
                         <div className="team-readout-row">
-                          <span>Buddy</span>
-                          <span>{buddy?.targetName ?? "Unmarked"}</span>
+                          <span>{lt("Buddy", "Напарник")}</span>
+                          <span>{buddy?.targetName ?? lt("Unmarked", "Не позначено")}</span>
                         </div>
                       </div>
                     </div>
@@ -438,12 +494,12 @@ export function TeamScreen({
                   <div className="mt-4 flex flex-wrap gap-2">
                     {assignedRoles.length > 0 ? (
                       assignedRoles.map((role) => (
-                        <span key={`${character.id}-${role}`} className="team-pill">
+                      <span key={`${character.id}-${role}`} className="team-pill">
                           {role}
                         </span>
                       ))
                     ) : (
-                      <span className="team-pill team-pill--muted">No primary crew role</span>
+                      <span className="team-pill team-pill--muted">{lt("No primary crew role", "Немає основної ролі в екіпажі")}</span>
                     )}
                   </div>
                 </div>
@@ -455,8 +511,8 @@ export function TeamScreen({
 
       <SectionCard
         id="team-roles"
-        title="Crew Positions"
-        eyebrow="Bridge Stations"
+        title={lt("Crew Positions", "Позиції екіпажу")}
+        eyebrow={lt("Bridge Stations", "Місткові станції")}
         className="xl:col-span-2"
       >
         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
@@ -468,25 +524,25 @@ export function TeamScreen({
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[0.68rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
-                      {teamCrewRoleLabels[crewPosition.role]}
+                      {getTeamCrewRoleLabel(crewPosition.role)}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-[var(--ink-muted)]">
-                      {teamCrewRoleDescriptions[crewPosition.role]}
+                      {getTeamCrewRoleDescription(crewPosition.role)}
                     </p>
                   </div>
                   <div className="rounded-full border border-[var(--line-soft)] px-3 py-1 text-[0.64rem] uppercase tracking-[0.24em] text-[var(--ink-faint)]">
-                    Best Fit:{" "}
+                    {lt("Best fit", "Найкраще пасує")}:{" "}
                     {bestMatch
                       ? formatBestMatchNames(bestMatch.winners)
                       : characters.length > 0
-                        ? "No trained crew"
-                        : "None"}
+                        ? lt("No trained crew", "Немає підготовленого екіпажу")
+                        : lt("None", "Немає")}
                   </div>
                 </div>
 
                 <div className="mt-4 grid gap-4">
                   <SavableSelectField
-                    label="Primary"
+                    label={lt("Primary", "Основний")}
                     value={crewPosition.primaryCharacterId ?? ""}
                     options={characterSelectOptions}
                     onCommit={(value) =>
@@ -494,7 +550,7 @@ export function TeamScreen({
                     }
                   />
                   <SavableSelectField
-                    label="Backup"
+                    label={lt("Backup", "Резервний")}
                     value={crewPosition.backupCharacterId ?? ""}
                     options={characterSelectOptions}
                     onCommit={(value) =>
@@ -502,7 +558,7 @@ export function TeamScreen({
                     }
                   />
                   <SavableTextField
-                    label="Station Notes"
+                    label={lt("Station Notes", "Нотатки по станції")}
                     value={crewPosition.notes}
                     multiline
                     rows={3}
@@ -518,43 +574,47 @@ export function TeamScreen({
       </SectionCard>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:gap-5">
-        <SectionCard id="team-ship" title="Ship" eyebrow="Heart of the Crew">
+        <SectionCard
+          id="team-ship"
+          title={lt("Ship", "Корабель")}
+          eyebrow={lt("Heart of the Crew", "Серце екіпажу")}
+        >
           <div className="grid gap-4">
             <div className="grid gap-4 md:grid-cols-2">
               <SavableTextField
-                label="Ship Name"
+                label={lt("Ship Name", "Назва корабля")}
                 value={team.shipName}
                 onCommit={(value) => onUpdateField("shipName", value)}
               />
               <SavableTextField
-                label="Ship Type"
-                hint="Courier, light freighter, gunship, salvage ship..."
+                label={lt("Ship Type", "Тип корабля")}
+                hint={lt("Courier, light freighter, gunship, rescue vessel...", "Кур'єр, легкий вантажник, канонерка, рятувальне судно...")}
                 value={team.shipType}
                 onCommit={(value) => onUpdateField("shipType", value)}
               />
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <SavableTextField
-                label="Ship Class"
-                hint="Rulebook classes usually run from II to V for group ships."
+                label={lt("Ship Class", "Клас корабля")}
+                hint={lt("Rulebook crew ships usually sit between class II and V.", "У книзі правил групові кораблі зазвичай мають клас від II до V.")}
                 value={team.shipClass}
                 onCommit={(value) => onUpdateField("shipClass", value)}
               />
               <SavableNumberField
-                label="Debt"
-                hint="Track the remaining debt in birr."
+                label={lt("Debt", "Борг")}
+                hint={lt("Track the remaining debt in birr.", "Відстежуйте залишок боргу в біррах.")}
                 min={0}
                 value={team.shipDebt}
                 onCommit={(value) => onUpdateField("shipDebt", value)}
               />
             </div>
             <SavableTextField
-              label="Ship Problem"
+              label={lt("Ship Problem", "Проблема корабля")}
               value={team.shipProblem}
               onCommit={(value) => onUpdateField("shipProblem", value)}
             />
             <SavableTextField
-              label="Upgrades"
+              label={lt("Upgrades", "Покращення")}
               multiline
               rows={4}
               value={team.shipUpgrades}
@@ -563,32 +623,36 @@ export function TeamScreen({
           </div>
         </SectionCard>
 
-        <SectionCard id="team-mission" title="Mission Board" eyebrow="Current Arc">
+        <SectionCard
+          id="team-mission"
+          title={lt("Mission Board", "Дошка місії")}
+          eyebrow={lt("Current Arc", "Поточна арка")}
+        >
           <div className="grid gap-4">
             <SavableTextField
-              label="Current Goal"
+              label={lt("Current Goal", "Поточна ціль")}
               value={team.currentGoal}
               onCommit={(value) => onUpdateField("currentGoal", value)}
             />
             <SavableTextField
-              label="Next Lead"
+              label={lt("Next Lead", "Наступна зачіпка")}
               value={team.nextLead}
               onCommit={(value) => onUpdateField("nextLead", value)}
             />
             <div className="grid gap-4 md:grid-cols-2">
               <SavableTextField
-                label="Reward"
+                label={lt("Reward", "Винагорода")}
                 value={team.reward}
                 onCommit={(value) => onUpdateField("reward", value)}
               />
               <SavableTextField
-                label="Deadline"
+                label={lt("Deadline", "Дедлайн")}
                 value={team.deadline}
                 onCommit={(value) => onUpdateField("deadline", value)}
               />
             </div>
             <SavableTextField
-              label="Unresolved Mystery"
+              label={lt("Unresolved Mystery", "Нерозкрита таємниця")}
               multiline
               rows={4}
               value={team.unresolvedMystery}
@@ -600,8 +664,8 @@ export function TeamScreen({
 
       <SectionCard
         id="team-factions"
-        title="Faction Ties"
-        eyebrow="Heat & Leverage"
+        title={lt("Faction Ties", "Зв'язки з фракціями")}
+        eyebrow={lt("Heat & Leverage", "Жар і важелі")}
         className="xl:col-span-2"
         actions={
           <button
@@ -609,14 +673,17 @@ export function TeamScreen({
             className="coriolis-chip"
             onClick={() => onCreateRepeater("factionTie")}
           >
-            Add Tie
+            {lt("Add Tie", "Додати зв'язок")}
           </button>
         }
       >
         <div className="grid gap-4">
           {team.factionTies.length === 0 ? (
             <p className="rounded-[1.2rem] border border-dashed border-[var(--line-soft)] px-4 py-5 text-sm text-[var(--ink-muted)]">
-              Track allies, enemies, faction heat, and who currently has leverage over the crew.
+              {lt(
+                "Track allies, enemies, faction heat, and who currently holds leverage over the crew.",
+                "Фіксуйте союзників, ворогів, рівень жару фракцій і те, хто зараз має важелі впливу на команду.",
+              )}
             </p>
           ) : null}
           {team.factionTies.map((tie) => (
@@ -627,23 +694,23 @@ export function TeamScreen({
                   className="text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)]"
                   onClick={() => onRemoveRepeater("factionTie", tie.id)}
                 >
-                  Remove
+                  {lt("Remove", "Прибрати")}
                 </button>
               </div>
               <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_180px_140px]">
                 <SavableTextField
-                  label="Faction"
+                  label={lt("Faction", "Фракція")}
                   value={tie.faction}
                   onCommit={(value) => onUpdateRepeater("factionTie", tie.id, "faction", value)}
                 />
                 <SavableSelectField
-                  label="Stance"
+                  label={lt("Stance", "Позиція")}
                   value={tie.stance}
                   options={stanceOptions}
                   onCommit={(value) => onUpdateRepeater("factionTie", tie.id, "stance", value)}
                 />
                 <SavableNumberField
-                  label="Heat"
+                  label={lt("Heat", "Жар")}
                   min={0}
                   max={5}
                   value={tie.heat}
@@ -652,14 +719,14 @@ export function TeamScreen({
               </div>
               <div className="mt-4 grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
                 <SavableTextField
-                  label="Leverage Holder"
+                  label={lt("Leverage Holder", "Хто тримає важіль")}
                   value={tie.leverageHolder}
                   onCommit={(value) =>
                     onUpdateRepeater("factionTie", tie.id, "leverageHolder", value)
                   }
                 />
                 <SavableTextField
-                  label="Notes"
+                  label={lt("Notes", "Нотатки")}
                   multiline
                   rows={3}
                   value={tie.notes}
@@ -673,7 +740,7 @@ export function TeamScreen({
 
       <TeamStoryTimeline
         storyBeats={team.storyBeats}
-        onCreateBeat={() => onCreateRepeater("storyBeat")}
+        onCreateBeat={(parentBeatId) => onCreateRepeater("storyBeat", { parentBeatId })}
         onRemoveBeat={(beatId) => onRemoveRepeater("storyBeat", beatId)}
         onUpdateBeat={(beatId, field, value) =>
           onUpdateRepeater("storyBeat", beatId, field, value)
@@ -682,8 +749,8 @@ export function TeamScreen({
 
       <SectionCard
         id="team-faces"
-        title="Known Faces"
-        eyebrow="Shared NPC Ledger"
+        title={lt("Known Faces", "Знайомі обличчя")}
+        eyebrow={lt("Shared NPC Registry", "Спільний реєстр NPC")}
         className="xl:col-span-2"
         actions={
           <button
@@ -691,14 +758,17 @@ export function TeamScreen({
             className="coriolis-chip"
             onClick={() => onCreateRepeater("knownFace")}
           >
-            Add Face
+            {lt("Add Face", "Додати обличчя")}
           </button>
         }
       >
         <div className="grid gap-4">
           {team.knownFaces.length === 0 ? (
             <p className="rounded-[1.2rem] border border-dashed border-[var(--line-soft)] px-4 py-5 text-sm text-[var(--ink-muted)]">
-              Shared contacts live here. Add an avatar, track trust, then promote someone into the crew when the story turns.
+              {lt(
+                "This is where shared contacts live. Add an avatar, track trust, and promote them into the crew when the story calls for it.",
+                "Тут зберігаються спільні контакти. Додайте аватар, відстежуйте рівень довіри, а коли сюжет поверне, підвищте персонажа до екіпажу.",
+              )}
             </p>
           ) : null}
           {team.knownFaces.map((knownFace) => {
@@ -715,16 +785,16 @@ export function TeamScreen({
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={knownFace.portraitPath}
-                          alt={`${knownFace.name || "Known face"} portrait`}
+                          alt={`${knownFace.name || lt("Known Face", "Знайоме обличчя")} ${lt("portrait", "портрет")}`}
                           className="h-full w-full object-cover"
                         />
                       ) : (
-                        <span>{getInitials(knownFace.name || "Unknown Face")}</span>
+                        <span>{getInitials(knownFace.name || lt("Unknown Face", "Невідоме обличчя"))}</span>
                       )}
                     </div>
 
                     <label className="flex cursor-pointer items-center justify-center rounded-full border border-[var(--gold)] bg-[color:rgba(201,160,80,0.12)] px-4 py-3 text-[0.68rem] uppercase tracking-[0.24em] text-[var(--paper)] transition hover:bg-[color:rgba(201,160,80,0.2)]">
-                      Load Avatar
+                      {lt("Upload Avatar", "Завантажити аватар")}
                       <input
                         type="file"
                         accept="image/png,image/jpeg,image/webp"
@@ -745,7 +815,7 @@ export function TeamScreen({
                         className="coriolis-chip"
                         onClick={() => onOpenCharacter(promotedCharacter.id)}
                       >
-                        Open Crew Sheet
+                        {lt("Open Crew Sheet", "Відкрити аркуш екіпажу")}
                       </button>
                     ) : (
                       <button
@@ -753,7 +823,7 @@ export function TeamScreen({
                         className="coriolis-chip"
                         onClick={() => onPromoteKnownFace(knownFace.id)}
                       >
-                        Promote to Crew
+                        {lt("Promote to Crew", "Підвищити до екіпажу")}
                       </button>
                     )}
                     <button
@@ -761,19 +831,19 @@ export function TeamScreen({
                       className="text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)]"
                       onClick={() => onRemoveRepeater("knownFace", knownFace.id)}
                     >
-                      Remove
+                      {lt("Remove", "Прибрати")}
                     </button>
                   </div>
 
                   <div className="min-w-0 flex-1">
                     <div className="grid gap-4 md:grid-cols-2">
                       <SavableTextField
-                        label="Name"
+                        label={lt("Name", "Ім'я")}
                         value={knownFace.name}
                         onCommit={(value) => onUpdateRepeater("knownFace", knownFace.id, "name", value)}
                       />
                       <SavableTextField
-                        label="Concept"
+                        label={lt("Concept", "Концепт")}
                         value={knownFace.concept}
                         onCommit={(value) =>
                           onUpdateRepeater("knownFace", knownFace.id, "concept", value)
@@ -782,21 +852,21 @@ export function TeamScreen({
                     </div>
                     <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_220px_220px]">
                       <SavableTextField
-                        label="Faction"
+                        label={lt("Faction", "Фракція")}
                         value={knownFace.faction}
                         onCommit={(value) =>
                           onUpdateRepeater("knownFace", knownFace.id, "faction", value)
                         }
                       />
                       <SavableTextField
-                        label="Last Seen"
+                        label={lt("Last Seen", "Де бачили востаннє")}
                         value={knownFace.lastSeen}
                         onCommit={(value) =>
                           onUpdateRepeater("knownFace", knownFace.id, "lastSeen", value)
                         }
                       />
                       <SavableSelectField
-                        label="Trust"
+                        label={lt("Trust", "Довіра")}
                         value={String(knownFace.trustLevel)}
                         options={trustOptions}
                         onCommit={(value) =>
@@ -806,7 +876,7 @@ export function TeamScreen({
                     </div>
                     <SavableTextField
                       className="mt-4"
-                      label="Notes"
+                      label={lt("Notes", "Нотатки")}
                       multiline
                       rows={4}
                       value={knownFace.notes}
@@ -822,8 +892,8 @@ export function TeamScreen({
 
       <SectionCard
         id="team-notes"
-        title="Typed Notes"
-        eyebrow="Operational Memory"
+        title={lt("Structured Notes", "Структуровані нотатки")}
+        eyebrow={lt("Operational Memory", "Оперативна пам'ять")}
         className="xl:col-span-2"
         actions={
           <button
@@ -831,44 +901,47 @@ export function TeamScreen({
             className="coriolis-chip"
             onClick={() => onCreateRepeater("note")}
           >
-            Add Note
+            {lt("Add Note", "Додати нотатку")}
           </button>
         }
       >
         <div className="grid gap-4">
           {team.notes.length === 0 ? (
             <p className="rounded-[1.2rem] border border-dashed border-[var(--line-soft)] px-4 py-5 text-sm text-[var(--ink-muted)]">
-              Use typed notes instead of one giant scratchpad so mission clues, debt, ship concerns, and NPC loose ends stay searchable.
+              {lt(
+                "Use structured notes instead of one giant scratchpad so mission prompts, debts, ship problems, and unfinished NPC threads stay searchable.",
+                "Користуйтеся структурованими нотатками замість одного великого чернетника, щоб підказки місії, борги, проблеми корабля та незавершені лінії NPC залишалися придатними до пошуку.",
+              )}
             </p>
           ) : null}
           {team.notes.map((note) => (
             <div key={note.id} className="rounded-[1.35rem] border border-[var(--line-soft)] bg-[var(--panel-soft)] p-4">
               <div className="mb-4 flex items-center justify-between gap-3">
-                <span className="team-pill">{teamNoteTagLabels[note.tag]}</span>
+                <span className="team-pill">{getTeamNoteTagLabel(note.tag)}</span>
                 <button
                   type="button"
                   className="text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)]"
                   onClick={() => onRemoveRepeater("note", note.id)}
                 >
-                  Remove
+                  {lt("Remove", "Прибрати")}
                 </button>
               </div>
               <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)]">
                 <SavableSelectField
-                  label="Tag"
+                  label={lt("Tag", "Тег")}
                   value={note.tag}
                   options={noteTagOptions}
                   onCommit={(value) => onUpdateRepeater("note", note.id, "tag", value)}
                 />
                 <SavableTextField
-                  label="Title"
+                  label={lt("Title", "Заголовок")}
                   value={note.title}
                   onCommit={(value) => onUpdateRepeater("note", note.id, "title", value)}
                 />
               </div>
               <SavableTextField
                 className="mt-4"
-                label="Body"
+                label={lt("Body", "Текст")}
                 multiline
                 rows={4}
                 value={note.body}

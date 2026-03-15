@@ -43,6 +43,7 @@ export type TeamCrewPositionRecord = {
 export type TeamStoryBeatRecord = {
   id: string;
   order: number;
+  parentBeatId: string | null;
   title: string;
   description: string;
   createdAt: string;
