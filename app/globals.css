@@ -1,26 +1,188 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --night: #090d16;
+  --night-raised: #121a27;
+  --panel: rgba(15, 19, 29, 0.88);
+  --panel-soft: rgba(247, 232, 205, 0.055);
+  --paper: #f5e7cc;
+  --ink: #f0e1bf;
+  --ink-muted: rgba(240, 225, 191, 0.7);
+  --ink-faint: rgba(240, 225, 191, 0.48);
+  --gold: #c9a050;
+  --line-soft: rgba(201, 160, 80, 0.18);
+  --line-strong: rgba(201, 160, 80, 0.34);
+  --shadow: rgba(1, 5, 10, 0.52);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-background: var(--night);
+  --color-foreground: var(--ink);
+  --font-sans: var(--font-exo);
+  --font-display: var(--font-marcellus);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top, rgba(197, 156, 74, 0.12), transparent 28%),
+    radial-gradient(circle at 18% 22%, rgba(86, 119, 183, 0.2), transparent 22%),
+    radial-gradient(circle at 80% 12%, rgba(218, 174, 92, 0.08), transparent 18%),
+    linear-gradient(180deg, #0a1019 0%, #090d16 56%, #0c121e 100%);
+  color: var(--ink);
+  font-family: var(--font-exo), sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(201, 160, 80, 0.28);
+  color: var(--paper);
+}
+
+.font-display {
+  font-family: var(--font-marcellus), serif;
+}
+
+.coriolis-stars {
+  background:
+    radial-gradient(circle at 16% 28%, rgba(255, 255, 255, 0.72) 0 1px, transparent 1.4px),
+    radial-gradient(circle at 72% 24%, rgba(255, 255, 255, 0.7) 0 1px, transparent 1.4px),
+    radial-gradient(circle at 84% 74%, rgba(255, 255, 255, 0.64) 0 1px, transparent 1.4px),
+    radial-gradient(circle at 32% 72%, rgba(255, 255, 255, 0.56) 0 1px, transparent 1.4px),
+    radial-gradient(circle at 60% 55%, rgba(201, 160, 80, 0.5) 0 1px, transparent 1.8px);
+  opacity: 0.55;
+}
+
+.coriolis-panel {
+  background:
+    linear-gradient(160deg, rgba(24, 31, 46, 0.9), rgba(11, 15, 24, 0.95)),
+    linear-gradient(130deg, rgba(201, 160, 80, 0.08), transparent 42%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 217, 0.05),
+    0 24px 80px rgba(2, 6, 12, 0.34);
+}
+
+.coriolis-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, rgba(201, 160, 80, 0.08), transparent 18%, transparent 82%, rgba(201, 160, 80, 0.06)),
+    radial-gradient(circle at top right, rgba(201, 160, 80, 0.08), transparent 32%);
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  padding: 1px;
+}
+
+.coriolis-input,
+.coriolis-textarea,
+.coriolis-select {
+  width: 100%;
+  border-radius: 1rem;
+  border: 1px solid var(--line-soft);
+  background: rgba(248, 238, 216, 0.07);
+  color: var(--paper);
+  outline: none;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.coriolis-input,
+.coriolis-select {
+  min-height: 3rem;
+  padding: 0.8rem 0.95rem;
+}
+
+.coriolis-textarea {
+  min-height: 7rem;
+  padding: 0.95rem;
+  resize: vertical;
+}
+
+.coriolis-input:focus,
+.coriolis-textarea:focus,
+.coriolis-select:focus {
+  border-color: rgba(201, 160, 80, 0.52);
+  background: rgba(248, 238, 216, 0.1);
+  box-shadow: 0 0 0 1px rgba(201, 160, 80, 0.32);
+}
+
+.coriolis-select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(245, 231, 204, 0.65) 50%),
+    linear-gradient(135deg, rgba(245, 231, 204, 0.65) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% - 3px),
+    calc(100% - 12px) calc(50% - 3px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+.coriolis-chip {
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: rgba(201, 160, 80, 0.12);
+  padding: 0.72rem 1rem;
+  color: var(--paper);
+  font-size: 0.8rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.coriolis-chip:hover {
+  background: rgba(201, 160, 80, 0.18);
+}
+
+.coriolis-chip:disabled {
+  opacity: 0.4;
+}
+
+.coriolis-chip--danger {
+  border-color: rgba(255, 118, 88, 0.3);
+  background: rgba(255, 118, 88, 0.1);
+}
+
+.coriolis-counter {
+  height: 1.15rem;
+  width: 1.15rem;
+  border-radius: 0.38rem;
+  border: 1px solid var(--line-soft);
+  background: rgba(248, 238, 216, 0.06);
+  transition:
+    transform 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.coriolis-counter:hover {
+  transform: translateY(-1px);
+}
+
+.coriolis-counter--active {
+  border-color: rgba(201, 160, 80, 0.6);
+  background: linear-gradient(180deg, rgba(218, 181, 102, 0.9), rgba(166, 121, 34, 0.92));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 243, 211, 0.36),
+    0 8px 18px rgba(185, 135, 44, 0.22);
 }

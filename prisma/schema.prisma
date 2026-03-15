@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum TalentSource {
+  group
+  concept
+  icon
+  other
+}
+
+model Character {
+  id                String                  @id @default(cuid())
+  name              String
+  description       String                  @default("")
+  background        String                  @default("")
+  concept           String                  @default("")
+  groupConcept      String                  @default("")
+  icon              String                  @default("")
+  reputation        Int                     @default(0)
+  personalProblem   String                  @default("")
+  face              String                  @default("")
+  clothing          String                  @default("")
+  portraitPath      String?
+  strength          Int                     @default(2)
+  agility           Int                     @default(2)
+  wits              Int                     @default(2)
+  empathy           Int                     @default(2)
+  maxHitPoints      Int                     @default(4)
+  currentHitPoints  Int                     @default(4)
+  maxMindPoints     Int                     @default(4)
+  currentMindPoints Int                     @default(4)
+  radiation         Int                     @default(0)
+  experience        Int                     @default(0)
+  criticalInjuries  String                  @default("")
+  notes             String                  @default("")
+  myCabinDescription String                 @default("")
+  myCabinGear       String                  @default("")
+  myCabinOther      String                  @default("")
+  birr              Int                     @default(0)
+  armorName         String                  @default("")
+  armorRating       Int                     @default(0)
+  armorComment      String                  @default("")
+  dexterity         Int                     @default(0)
+  force             Int                     @default(0)
+  infiltration      Int                     @default(0)
+  manipulation      Int                     @default(0)
+  meleeCombat       Int                     @default(0)
+  observation       Int                     @default(0)
+  rangedCombat      Int                     @default(0)
+  survival          Int                     @default(0)
+  command           Int                     @default(0)
+  culture           Int                     @default(0)
+  dataDjinn         Int                     @default(0)
+  medicurgy         Int                     @default(0)
+  mysticPowers      Int                     @default(0)
+  pilot             Int                     @default(0)
+  science           Int                     @default(0)
+  technology        Int                     @default(0)
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+  contacts          CharacterContact[]
+  gearItems         CharacterGearItem[]
+  relationships     CharacterRelationship[]
+  talents           CharacterTalent[]
+  weapons           CharacterWeapon[]
+}
+
+model CharacterRelationship {
+  id          String    @id @default(cuid())
+  characterId String
+  order       Int
+  targetName  String    @default("")
+  description String    @default("")
+  isBuddy     Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@index([characterId, order])
+}
+
+model CharacterTalent {
+  id          String       @id @default(cuid())
+  characterId String
+  order       Int
+  name        String       @default("")
+  source      TalentSource @default(other)
+  notes       String       @default("")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  character   Character    @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@index([characterId, order])
+}
+
+model CharacterWeapon {
+  id          String    @id @default(cuid())
+  characterId String
+  order       Int
+  presetId    String?
+  name        String    @default("")
+  bonus       Int       @default(0)
+  initiative  Int       @default(0)
+  damage      Int       @default(0)
+  crit        String    @default("")
+  range       String    @default("")
+  comments    String    @default("")
+  reloads     Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@index([characterId, order])
+}
+
+model CharacterGearItem {
+  id               String    @id @default(cuid())
+  characterId      String
+  order            Int
+  presetId         String?
+  name             String    @default("")
+  bonus            String    @default("")
+  comment          String    @default("")
+  encumbranceUnits Int       @default(2)
+  isTiny           Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  character        Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@index([characterId, order])
+}
+
+model CharacterContact {
+  id          String    @id @default(cuid())
+  characterId String
+  order       Int
+  name        String    @default("")
+  concept     String    @default("")
+  notes       String    @default("")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@index([characterId, order])
+}
