@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useEffect, useState, useTransition } from "react";
+import { useDeferredValue, useEffect, useRef, useState, useTransition } from "react";
 
 import {
   addInventoryPresetAction,
@@ -39,6 +39,18 @@ import {
   starterGuidanceHints,
   starterGuidanceLabels,
 } from "@/lib/coriolis-rules";
+import {
+  applyOptimisticSkillEdits,
+  clearOptimisticSkillEdit,
+  isCharacterSkillField,
+  mergeCharacterListWithPreservedSkills,
+  mergeCharacterWithPreservedSkills,
+  pruneOptimisticSkillEdits,
+  setOptimisticSkillEdit,
+  type CharacterSkillField,
+  type PendingOptimisticCharacterSkillEdits,
+  updateCharacterSkillValue,
+} from "@/lib/optimistic-skills";
 import {
   originCultureValues,
   originSystemValues,
@@ -80,7 +92,7 @@ const attributeFields: Array<{
   { field: "empathy", label: "Empathy", hint: "Presence, empathy, persuasion" },
 ];
 
-const generalSkills: Array<{ field: CharacterScalarField; label: string }> = [
+const generalSkills: Array<{ field: CharacterSkillField; label: string }> = [
   { field: "dexterity", label: "Dexterity" },
   { field: "force", label: "Force" },
   { field: "infiltration", label: "Infiltration" },
@@ -91,7 +103,7 @@ const generalSkills: Array<{ field: CharacterScalarField; label: string }> = [
   { field: "survival", label: "Survival" },
 ];
 
-const advancedSkills: Array<{ field: CharacterScalarField; label: string }> = [
+const advancedSkills: Array<{ field: CharacterSkillField; label: string }> = [
   { field: "command", label: "Command" },
   { field: "culture", label: "Culture" },
   { field: "dataDjinn", label: "Data Djinn" },
@@ -106,6 +118,21 @@ const skillGroups = [
   { id: "general", title: "General Skills", skills: generalSkills },
   { id: "advanced", title: "Advanced Skills", skills: advancedSkills },
 ] as const;
+
+type SkillGroupDefinition = (typeof skillGroups)[number];
+
+function splitSkillsByValue(
+  skills: readonly SkillGroupDefinition["skills"][number][],
+  character: CharacterRecord,
+) {
+  const activeSkills = skills.filter((skill) => (character[skill.field] as number) > 0);
+  const foldedSkills = skills.filter((skill) => (character[skill.field] as number) === 0);
+
+  return {
+    activeSkills,
+    foldedSkills,
+  };
+}
 
 const talentSourceOptions = [
   { value: "group", label: "Group" },
@@ -280,6 +307,8 @@ export function RosterApp({
   initialTeam,
 }: RosterAppProps) {
   const [characters, setCharacters] = useState(initialCharacters);
+  const [pendingSkillEdits, setPendingSkillEdits] =
+    useState<PendingOptimisticCharacterSkillEdits>({});
   const [team, setTeam] = useState(initialTeam);
   const [selectedPanelId, setSelectedPanelId] = useState<string>(TEAM_VIEW_ID);
   const [drawerKind, setDrawerKind] = useState<InventoryKind | null>(null);
@@ -287,6 +316,7 @@ export function RosterApp({
     "Autosaves on blur. Shared crew data and character sheets stay in sync.",
   );
   const [isStarterRulesHidden, setIsStarterRulesHidden] = useState(false);
+  const [areAllSkillsVisible, setAreAllSkillsVisible] = useState(false);
   const [activeSectionId, setActiveSectionId] = useState<QuickNavSectionId>(
     allQuickNavSections[0].id,
   );
@@ -294,20 +324,25 @@ export function RosterApp({
     useState<TeamQuickNavSectionId>(teamQuickNavSections[0].id);
   const [isPending, startTransition] = useTransition();
   const [isUploading, setIsUploading] = useState(false);
+  const latestIssuedSkillRequestIds = useRef<Record<string, number>>({});
+  const latestConfirmedSkillRequestIds = useRef<Record<string, number>>({});
 
   const isTeamSelected = selectedPanelId === TEAM_VIEW_ID;
+  const visibleCharacters = characters.map((character) =>
+    applyOptimisticSkillEdits(character, pendingSkillEdits[character.id]),
+  );
   const selectedCharacter =
     isTeamSelected
       ? null
-      : characters.find((character) => character.id === selectedPanelId) ??
-        characters[0] ??
+      : visibleCharacters.find((character) => character.id === selectedPanelId) ??
+        visibleCharacters[0] ??
         null;
   const selectedCharacterId = selectedCharacter?.id ?? null;
   const quickNavSections = isStarterRulesHidden
     ? allQuickNavSections.filter((section) => section.id !== "starter-rules")
     : allQuickNavSections;
   const otherCharacters = selectedCharacter
-    ? characters.filter((character) => character.id !== selectedCharacter.id)
+    ? visibleCharacters.filter((character) => character.id !== selectedCharacter.id)
     : [];
   const otherCharacterNames = otherCharacters.map((character) => character.name);
   const unassignedRelationshipNames = selectedCharacter
@@ -318,6 +353,41 @@ export function RosterApp({
           ),
       )
     : [];
+  const skillGroupsForDisplay = selectedCharacter
+    ? skillGroups
+        .map((group) => {
+          const { activeSkills, foldedSkills } = splitSkillsByValue(
+            group.skills,
+            selectedCharacter,
+          );
+          const visibleSkills = areAllSkillsVisible
+            ? [...activeSkills, ...foldedSkills]
+            : activeSkills;
+
+          return {
+            ...group,
+            visibleSkills,
+            foldedSkills,
+          };
+        })
+        .filter((group) => group.visibleSkills.length > 0)
+    : [];
+  const hiddenSkillCount = selectedCharacter
+    ? skillGroups.reduce(
+        (total, group) =>
+          total + splitSkillsByValue(group.skills, selectedCharacter).foldedSkills.length,
+        0,
+      )
+    : 0;
+
+  useEffect(() => {
+    setPendingSkillEdits((currentPendingEdits) =>
+      pruneOptimisticSkillEdits(
+        currentPendingEdits,
+        characters.map((character) => character.id),
+      ),
+    );
+  }, [characters]);
 
   useEffect(() => {
     if (isTeamSelected) {
@@ -331,6 +401,10 @@ export function RosterApp({
 
   useEffect(() => {
     setActiveSectionId(allQuickNavSections[0].id);
+  }, [selectedCharacterId]);
+
+  useEffect(() => {
+    setAreAllSkillsVisible(false);
   }, [selectedCharacterId]);
 
   useEffect(() => {
@@ -445,6 +519,10 @@ export function RosterApp({
     return () => observer.disconnect();
   }, [isTeamSelected, team.id]);
 
+  function getSkillRequestKey(characterId: string, field: CharacterSkillField) {
+    return `${characterId}:${field}`;
+  }
+
   function patchCharacter(updatedCharacter: CharacterRecord) {
     setCharacters((currentCharacters) => {
       const existingIndex = currentCharacters.findIndex(
@@ -456,7 +534,9 @@ export function RosterApp({
       }
 
       return currentCharacters.map((character) =>
-        character.id === updatedCharacter.id ? updatedCharacter : character,
+        character.id === updatedCharacter.id
+          ? mergeCharacterWithPreservedSkills(character, updatedCharacter)
+          : character,
       );
     });
   }
@@ -483,6 +563,11 @@ export function RosterApp({
       return;
     }
 
+    if (isCharacterSkillField(field)) {
+      commitSkillField(field, Number(value));
+      return;
+    }
+
     runTask(async () => {
       const updated = await updateCharacterFieldAction({
         characterId: selectedCharacter.id,
@@ -490,6 +575,60 @@ export function RosterApp({
         value,
       });
       patchCharacter(updated);
+    });
+  }
+
+  function commitSkillField(field: CharacterSkillField, value: number) {
+    if (!selectedCharacter) {
+      return;
+    }
+
+    const characterId = selectedCharacter.id;
+    const requestKey = getSkillRequestKey(characterId, field);
+    const requestId = (latestIssuedSkillRequestIds.current[requestKey] ?? 0) + 1;
+
+    latestIssuedSkillRequestIds.current[requestKey] = requestId;
+    setPendingSkillEdits((currentPendingEdits) =>
+      setOptimisticSkillEdit(currentPendingEdits, characterId, field, value),
+    );
+
+    runTask(async () => {
+      try {
+        const updated = await updateCharacterFieldAction({
+          characterId,
+          field,
+          value,
+        });
+        const latestConfirmedRequestId =
+          latestConfirmedSkillRequestIds.current[requestKey] ?? 0;
+
+        if (requestId > latestConfirmedRequestId) {
+          setCharacters((currentCharacters) =>
+            updateCharacterSkillValue(
+              currentCharacters,
+              characterId,
+              field,
+              updated[field],
+            ),
+          );
+          latestConfirmedSkillRequestIds.current[requestKey] = requestId;
+        }
+
+        if (latestIssuedSkillRequestIds.current[requestKey] === requestId) {
+          setPendingSkillEdits((currentPendingEdits) =>
+            clearOptimisticSkillEdit(currentPendingEdits, characterId, field),
+          );
+        }
+      } catch (error) {
+        if (latestIssuedSkillRequestIds.current[requestKey] !== requestId) {
+          return;
+        }
+
+        setPendingSkillEdits((currentPendingEdits) =>
+          clearOptimisticSkillEdit(currentPendingEdits, characterId, field),
+        );
+        throw error;
+      }
     });
   }
 
@@ -761,7 +900,7 @@ export function RosterApp({
                       setCharacters((currentCharacters) =>
                         currentCharacters.map((character) => {
                           if (character.id === updated.id) {
-                            return updated;
+                            return mergeCharacterWithPreservedSkills(character, updated);
                           }
 
                           return {
@@ -798,7 +937,9 @@ export function RosterApp({
 
                     runTask(async () => {
                       const remaining = await deleteCharacterAction(selectedCharacter.id);
-                      setCharacters(remaining);
+                      setCharacters((currentCharacters) =>
+                        mergeCharacterListWithPreservedSkills(currentCharacters, remaining),
+                      );
                       setSelectedPanelId(remaining[0]?.id ?? TEAM_VIEW_ID);
                     }, "Sheet removed.");
                   }}
@@ -829,7 +970,7 @@ export function RosterApp({
               >
                 Team
               </button>
-              {characters.map((character) => {
+              {visibleCharacters.map((character) => {
                 const isActive = character.id === selectedCharacter?.id && !isTeamSelected;
 
                 return (
@@ -882,7 +1023,7 @@ export function RosterApp({
           <main className="grid gap-4 xl:gap-5">
             <TeamScreen
               team={team}
-              characters={characters}
+              characters={visibleCharacters}
               onOpenCharacter={(characterId) => setSelectedPanelId(characterId)}
               onUpdateField={(field, value) =>
                 commitTeamField(field as TeamScalarField, value)
@@ -1383,7 +1524,7 @@ export function RosterApp({
               className="lg:col-span-2"
             >
               <div className="grid gap-5 lg:grid-cols-2">
-                {skillGroups.map((group) => (
+                {skillGroupsForDisplay.map((group) => (
                   <div key={group.id} className="grid gap-4">
                     <div className="space-y-1 px-1">
                       <p className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
@@ -1391,7 +1532,7 @@ export function RosterApp({
                       </p>
                     </div>
                     <div className="grid gap-4">
-                      {group.skills.map((skill) => (
+                      {group.visibleSkills.map((skill) => (
                         <SegmentedValueField
                           key={skill.field}
                           label={skill.label}
@@ -1404,6 +1545,23 @@ export function RosterApp({
                   </div>
                 ))}
               </div>
+              {hiddenSkillCount > 0 ? (
+                <div className="mt-5 flex flex-col items-start gap-3 border-t border-[var(--line-soft)] pt-5">
+                  {skillGroupsForDisplay.length === 0 ? (
+                    <p className="text-sm text-[var(--ink-muted)]">
+                      All skills are currently folded because they are at 0.
+                    </p>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="coriolis-chip"
+                    aria-expanded={areAllSkillsVisible}
+                    onClick={() => setAreAllSkillsVisible((current) => !current)}
+                  >
+                    {areAllSkillsVisible ? "Show fewer" : "Show all"}
+                  </button>
+                </div>
+              ) : null}
             </SectionCard>
 
             <SectionCard

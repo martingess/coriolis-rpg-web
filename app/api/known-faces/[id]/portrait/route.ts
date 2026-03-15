@@ -1,6 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, rm, writeFile } from "node:fs/promises";
-import { extname, resolve } from "node:path";
+import { extname } from "node:path";
 
 import { NextResponse } from "next/server";
 
@@ -14,8 +12,50 @@ const allowedMimeTypes = new Map([
   ["image/webp", ".webp"],
 ]);
 
-function isManagedPortrait(pathname: string | null) {
-  return Boolean(pathname && pathname.startsWith("/uploads/portraits/"));
+function getNormalizedImageType(file: File) {
+  const extension =
+    allowedMimeTypes.get(file.type) ?? extname(file.name).toLowerCase();
+
+  if (extension === ".png") {
+    return "image/png";
+  }
+
+  if (extension === ".jpg" || extension === ".jpeg") {
+    return "image/jpeg";
+  }
+
+  if (extension === ".webp") {
+    return "image/webp";
+  }
+
+  return null;
+}
+
+export async function GET(
+  _request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  const { id } = await context.params;
+  const portrait = await prisma.teamKnownFacePortrait.findUnique({
+    where: {
+      knownFaceId: id,
+    },
+    select: {
+      data: true,
+      mimeType: true,
+    },
+  });
+
+  if (!portrait) {
+    return new NextResponse("Portrait not found.", { status: 404 });
+  }
+
+  return new NextResponse(Buffer.from(portrait.data), {
+    headers: {
+      "cache-control": "no-store, max-age=0",
+      "content-type": portrait.mimeType,
+    },
+  });
 }
 
 export async function POST(
@@ -28,7 +68,7 @@ export async function POST(
       id,
     },
     select: {
-      portraitPath: true,
+      id: true,
     },
   });
 
@@ -50,35 +90,34 @@ export async function POST(
     );
   }
 
-  const extension =
-    allowedMimeTypes.get(file.type) ?? extname(file.name).toLowerCase();
+  const mimeType = getNormalizedImageType(file);
 
-  if (![".png", ".jpg", ".jpeg", ".webp"].includes(extension)) {
+  if (!mimeType) {
     return NextResponse.json(
       { error: "Only PNG, JPG, and WEBP portraits are supported." },
       { status: 400 },
     );
   }
 
-  const uploadDir = resolve(process.cwd(), "public/uploads/portraits");
-  await mkdir(uploadDir, { recursive: true });
+  const data = Buffer.from(await file.arrayBuffer());
+  const portraitPath = `/api/known-faces/${id}/portrait?v=${Date.now()}`;
 
-  const normalizedExtension = extension === ".jpeg" ? ".jpg" : extension;
-  const fileName = `${id}-${randomUUID()}${normalizedExtension}`;
-  const destination = resolve(uploadDir, fileName);
-  const bytes = Buffer.from(await file.arrayBuffer());
+  await prisma.teamKnownFacePortrait.upsert({
+    where: {
+      knownFaceId: id,
+    },
+    create: {
+      knownFaceId: id,
+      data,
+      mimeType,
+    },
+    update: {
+      data,
+      mimeType,
+    },
+  });
 
-  await writeFile(destination, bytes);
-
-  if (isManagedPortrait(existing.portraitPath)) {
-    const previousFile = resolve(
-      process.cwd(),
-      `public${existing.portraitPath}`,
-    );
-    await rm(previousFile, { force: true });
-  }
-
-  const team = await updateKnownFacePortraitPath(id, `/uploads/portraits/${fileName}`);
+  const team = await updateKnownFacePortraitPath(id, portraitPath);
 
   return NextResponse.json({ team });
 }

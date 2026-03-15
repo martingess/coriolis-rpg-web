@@ -50,6 +50,8 @@ test("mobile roster flow persists edits and inventory", async ({ page }) => {
     .getByRole("heading", { name: "Skills" })
     .locator("xpath=ancestor::section[1]");
   await expect(skillsSection.getByRole("spinbutton")).toHaveCount(0);
+  await expect(skillsSection.getByRole("group", { name: "Dexterity" })).toHaveCount(0);
+  await skillsSection.getByRole("button", { name: "Show all" }).click();
   const dexterityTrack = skillsSection.getByRole("group", { name: "Dexterity" });
   await dexterityTrack.getByRole("button", { name: "Dexterity: set to 2" }).click();
   await expect(dexterityTrack).toContainText("2/5");
@@ -115,12 +117,19 @@ test("desktop layout keeps the full sheet readable", async ({ page }) => {
   const hitPointsTrack = conditionsSection.getByRole("group", {
     name: /Hit Points \(max 7\)/i,
   });
+  const skillsSection = page
+    .getByRole("heading", { name: "Skills" })
+    .locator("xpath=ancestor::section[1]");
 
   await expect(page.getByRole("heading", { name: "Skills" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Starter Rules" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Weapons" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "People I've Met" })).toBeVisible();
   await expect(page.getByRole("button", { name: "New" })).toBeVisible();
+  await expect(skillsSection.getByRole("group", { name: "Dexterity" })).toBeVisible();
+  await expect(skillsSection.getByRole("group", { name: "Force" })).toHaveCount(0);
+  await skillsSection.getByRole("button", { name: "Show all" }).click();
+  await expect(skillsSection.getByRole("group", { name: "Force" })).toBeVisible();
   await hitPointsTrack
     .getByRole("button", { name: "Hit Points (max 7): set to 5" })
     .click();

@@ -5,12 +5,12 @@
   "scripts": {
     "dev": "next dev",
     "dev:e2e": "pnpm db:push && next dev",
-    "prebuild": "prisma generate",
+    "prebuild": "prisma migrate deploy && prisma generate",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "db:generate": "prisma generate",
-    "db:push": "tsx scripts/db-push.ts",
+    "db:push": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "test": "vitest run",
     "test:e2e": "playwright test"

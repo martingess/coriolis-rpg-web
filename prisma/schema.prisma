@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -74,6 +74,7 @@ model Character {
   face              String                  @default("")
   clothing          String                  @default("")
   portraitPath      String?
+  portraitAsset     CharacterPortrait?
   strength          Int                     @default(2)
   agility           Int                     @default(2)
   wits              Int                     @default(2)
@@ -119,6 +120,14 @@ model Character {
   relationships     CharacterRelationship[]
   talents           CharacterTalent[]
   weapons           CharacterWeapon[]
+}
+
+model CharacterPortrait {
+  characterId String   @id
+  mimeType    String
+  data        Bytes
+  updatedAt   DateTime @updatedAt
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
 }
 
 model Team {
@@ -206,6 +215,7 @@ model TeamKnownFace {
   trustLevel          Int        @default(3)
   notes               String     @default("")
   portraitPath        String?
+  portraitAsset       TeamKnownFacePortrait?
   promotedCharacterId String?
   createdAt           DateTime   @default(now())
   updatedAt           DateTime   @updatedAt
@@ -213,6 +223,14 @@ model TeamKnownFace {
   team                Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@index([teamId, order])
+}
+
+model TeamKnownFacePortrait {
+  knownFaceId String   @id
+  mimeType    String
+  data        Bytes
+  updatedAt   DateTime @updatedAt
+  knownFace   TeamKnownFace @relation(fields: [knownFaceId], references: [id], onDelete: Cascade)
 }
 
 model TeamFactionTie {

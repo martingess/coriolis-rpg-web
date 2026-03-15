@@ -21,9 +21,13 @@ import {
   teamNoteTagValues,
   trustLevelLabels,
 } from "@/lib/team-types";
+import {
+  findBestCharactersByField,
+  findBestCharactersForRole,
+  formatBestMatchNames,
+} from "@/lib/team-readouts";
 import type {
   GroupConcept,
-  TeamCrewRole,
   TeamRecord,
 } from "@/lib/team-types";
 
@@ -40,42 +44,6 @@ export const teamQuickNavSections = [
 ] as const;
 
 export type TeamQuickNavSectionId = (typeof teamQuickNavSections)[number]["id"];
-
-const roleWeights: Record<
-  TeamCrewRole,
-  Array<{ field: keyof CharacterRecord; weight: number }>
-> = {
-  captain: [
-    { field: "command", weight: 4 },
-    { field: "manipulation", weight: 3 },
-    { field: "empathy", weight: 2 },
-    { field: "observation", weight: 1 },
-  ],
-  engineer: [
-    { field: "technology", weight: 4 },
-    { field: "dataDjinn", weight: 2 },
-    { field: "science", weight: 2 },
-    { field: "wits", weight: 1 },
-  ],
-  pilot: [
-    { field: "pilot", weight: 4 },
-    { field: "agility", weight: 2 },
-    { field: "observation", weight: 1 },
-    { field: "survival", weight: 1 },
-  ],
-  sensorOperator: [
-    { field: "observation", weight: 4 },
-    { field: "dataDjinn", weight: 3 },
-    { field: "wits", weight: 2 },
-    { field: "culture", weight: 1 },
-  ],
-  gunner: [
-    { field: "rangedCombat", weight: 4 },
-    { field: "agility", weight: 2 },
-    { field: "observation", weight: 2 },
-    { field: "command", weight: 1 },
-  ],
-};
 
 const attributeSpotlightFields: Array<{
   field: keyof CharacterRecord;
@@ -128,33 +96,6 @@ function getInitials(name: string) {
     .map((part) => part[0] ?? "")
     .join("")
     .toUpperCase();
-}
-
-function findBestCharacter(
-  characters: CharacterRecord[],
-  field: keyof CharacterRecord,
-) {
-  return characters.reduce<CharacterRecord | null>((best, character) => {
-    if (!best) {
-      return character;
-    }
-
-    const bestValue = Number(best[field] ?? 0);
-    const currentValue = Number(character[field] ?? 0);
-
-    if (currentValue > bestValue) {
-      return character;
-    }
-
-    return best;
-  }, null);
-}
-
-function scoreCharacterForRole(character: CharacterRecord, role: TeamCrewRole) {
-  return roleWeights[role].reduce((total, weight) => {
-    const value = Number(character[weight.field] ?? 0);
-    return total + value * weight.weight;
-  }, 0);
 }
 
 function joinSuggestions(groupConcept: string) {
@@ -363,13 +304,15 @@ export function TeamScreen({
               </p>
               <div className="mt-4 grid gap-3">
                 {attributeSpotlightFields.map((entry) => {
-                  const character = findBestCharacter(characters, entry.field);
+                  const bestMatch = findBestCharactersByField(characters, entry.field);
 
                   return (
                     <div key={entry.field} className="team-readout-row">
                       <span>{entry.label}</span>
                       <span>
-                        {character ? `${character.name} · ${String(character[entry.field])}` : "No crew"}
+                        {bestMatch
+                          ? `${formatBestMatchNames(bestMatch.winners)} · ${bestMatch.value}`
+                          : "No crew"}
                       </span>
                     </div>
                   );
@@ -383,13 +326,17 @@ export function TeamScreen({
               </p>
               <div className="mt-4 grid gap-3">
                 {skillSpotlightFields.map((entry) => {
-                  const character = findBestCharacter(characters, entry.field);
+                  const bestMatch = findBestCharactersByField(characters, entry.field, 1);
 
                   return (
                     <div key={entry.field} className="team-readout-row">
                       <span>{entry.label}</span>
                       <span>
-                        {character ? `${character.name} · ${String(character[entry.field])}` : "No crew"}
+                        {bestMatch
+                          ? `${formatBestMatchNames(bestMatch.winners)} · ${bestMatch.value}`
+                          : characters.length > 0
+                            ? "No trained crew"
+                            : "No crew"}
                       </span>
                     </div>
                   );
@@ -403,21 +350,18 @@ export function TeamScreen({
               </p>
               <div className="mt-4 grid gap-3">
                 {teamCrewRoleValues.map((role) => {
-                  const bestCandidate = characters.reduce<CharacterRecord | null>((best, character) => {
-                    if (!best) {
-                      return character;
-                    }
-
-                    return scoreCharacterForRole(character, role) >
-                      scoreCharacterForRole(best, role)
-                      ? character
-                      : best;
-                  }, null);
+                  const bestMatch = findBestCharactersForRole(characters, role);
 
                   return (
                     <div key={role} className="team-readout-row">
                       <span>{teamCrewRoleLabels[role]}</span>
-                      <span>{bestCandidate ? bestCandidate.name : "No crew"}</span>
+                      <span>
+                        {bestMatch
+                          ? formatBestMatchNames(bestMatch.winners)
+                          : characters.length > 0
+                            ? "No trained crew"
+                            : "No crew"}
+                      </span>
                     </div>
                   );
                 })}
@@ -508,16 +452,7 @@ export function TeamScreen({
       >
         <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {team.crewPositions.map((crewPosition) => {
-            const bestCandidate = characters.reduce<CharacterRecord | null>((best, character) => {
-              if (!best) {
-                return character;
-              }
-
-              return scoreCharacterForRole(character, crewPosition.role) >
-                scoreCharacterForRole(best, crewPosition.role)
-                ? character
-                : best;
-            }, null);
+            const bestMatch = findBestCharactersForRole(characters, crewPosition.role);
 
             return (
               <div key={crewPosition.id} className="team-role-card">
@@ -531,7 +466,12 @@ export function TeamScreen({
                     </p>
                   </div>
                   <div className="rounded-full border border-[var(--line-soft)] px-3 py-1 text-[0.64rem] uppercase tracking-[0.24em] text-[var(--ink-faint)]">
-                    Best Fit: {bestCandidate?.name ?? "None"}
+                    Best Fit:{" "}
+                    {bestMatch
+                      ? formatBestMatchNames(bestMatch.winners)
+                      : characters.length > 0
+                        ? "No trained crew"
+                        : "None"}
                   </div>
                 </div>
 
