@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:e2e": "pnpm db:push && next dev",
+    "prebuild": "prisma generate",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
