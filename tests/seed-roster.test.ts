@@ -9,7 +9,7 @@ afterEach(() => {
 
 describe("seeded roster behavior", () => {
   it("only inserts sample characters when the database is empty", async () => {
-    const client = createTestClient();
+    const client = await createTestClient();
 
     try {
       const firstLoad = await getRoster(client);

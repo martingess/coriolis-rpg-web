@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  createConditionModifier,
   createCharacter,
   createRepeaterItem,
+  deleteConditionModifier,
   deleteCharacter,
   getRoster,
   renameCharacter,
   setBuddy,
+  updateConditionModifier,
   updateCharacterField,
   updateRepeaterField,
 } from "@/lib/roster";
@@ -18,7 +21,7 @@ afterEach(() => {
 
 describe("roster behavior aligned with the rulebook", () => {
   it("lets experience grow beyond ten and keeps it persisted", async () => {
-    const client = createTestClient();
+    const client = await createTestClient();
 
     try {
       const character = await createCharacter(client);
@@ -34,7 +37,7 @@ describe("roster behavior aligned with the rulebook", () => {
   });
 
   it("keeps relationships tied to other active sheets and propagates rename/delete changes", async () => {
-    const client = createTestClient();
+    const client = await createTestClient();
 
     try {
       const firstCharacter = await createCharacter(client);
@@ -94,6 +97,88 @@ describe("roster behavior aligned with the rulebook", () => {
       );
 
       expect(laylaAfterDelete?.relationships).toHaveLength(0);
+    } finally {
+      await client.$disconnect();
+    }
+  });
+
+  it("persists condition modifiers and recalculates effective track maximums", async () => {
+    const client = await createTestClient();
+
+    try {
+      const character = await createCharacter(client);
+
+      const withHitPointsModifier = await createConditionModifier(
+        {
+          characterId: character.id,
+          target: "hitPoints",
+          name: "Exo shell reinforcement",
+          description: "Extra plating and harness support.",
+          value: 2,
+        },
+        client,
+      );
+
+      expect(withHitPointsModifier.maxHitPoints).toBe(6);
+      expect(withHitPointsModifier.conditionModifiers).toHaveLength(1);
+
+      const withRadiationModifier = await createConditionModifier(
+        {
+          characterId: character.id,
+          target: "radiation",
+          name: "Lead-lined cloak",
+          description: "Improvised shielding around the suit seams.",
+          value: -7,
+        },
+        client,
+      );
+
+      expect(withRadiationModifier.maxRadiation).toBe(3);
+
+      const cappedRadiation = await updateCharacterField(
+        character.id,
+        "radiation",
+        8,
+        client,
+      );
+
+      expect(cappedRadiation.radiation).toBe(3);
+
+      const radiationModifierId = withRadiationModifier.conditionModifiers.find(
+        (modifier) => modifier.target === "radiation",
+      )?.id;
+
+      if (!radiationModifierId) {
+        throw new Error("Expected a radiation modifier to be created.");
+      }
+
+      const withTighterRadiationCap = await updateConditionModifier(
+        radiationModifierId,
+        {
+          target: "radiation",
+          name: "Lead-lined cloak",
+          description: "Damaged shielding leaves almost no tolerance.",
+          value: -9,
+        },
+        client,
+      );
+
+      expect(withTighterRadiationCap.maxRadiation).toBe(1);
+      expect(withTighterRadiationCap.radiation).toBe(1);
+
+      const hitPointsModifierId = withHitPointsModifier.conditionModifiers[0]?.id;
+
+      if (!hitPointsModifierId) {
+        throw new Error("Expected a hit-point modifier to be created.");
+      }
+
+      const withoutHitPointsModifier = await deleteConditionModifier(
+        hitPointsModifierId,
+        client,
+      );
+
+      expect(withoutHitPointsModifier.maxHitPoints).toBe(4);
+      expect(withoutHitPointsModifier.conditionModifiers).toHaveLength(1);
     } finally {
       await client.$disconnect();
     }

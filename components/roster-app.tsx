@@ -11,15 +11,18 @@ import {
 
 import {
   addInventoryPresetAction,
+  createConditionModifierAction,
   createCharacterAction,
   createRepeaterItemAction,
   createTeamRepeaterItemAction,
+  deleteConditionModifierAction,
   deleteCharacterAction,
   deleteRepeaterItemAction,
   deleteTeamRepeaterItemAction,
   promoteKnownFaceToCharacterAction,
   renameCharacterAction,
   setBuddyAction,
+  updateConditionModifierAction,
   updateCharacterFieldAction,
   updateRepeaterFieldAction,
   updateTeamFieldAction,
@@ -58,14 +61,17 @@ import {
   updateCharacterSkillValue,
 } from "@/lib/optimistic-skills";
 import {
+  conditionModifierTargetValues,
   originCultureValues,
   originSystemValues,
   upbringingValues,
 } from "@/lib/roster-types";
 import type {
+  CharacterConditionModifierRecord,
   CharacterRecord,
   CharacterScalarField,
   CharacterWeaponRecord,
+  ConditionModifierTarget,
   InventoryKind,
   InventoryPreset,
   OriginCulture,
@@ -263,6 +269,17 @@ const upbringingOptions = [
     label: upbringingLabels[value],
   })),
 ];
+
+const conditionModifierTargetLabels: Record<ConditionModifierTarget, string> = {
+  hitPoints: "Hit Points",
+  mindPoints: "Mind Points",
+  radiation: "Radiation",
+};
+
+const conditionModifierTargetOptions = conditionModifierTargetValues.map((value) => ({
+  value,
+  label: conditionModifierTargetLabels[value],
+}));
 
 const encumbrancePresets = [
   { value: "0", label: "Tiny" },
@@ -583,6 +600,370 @@ function BirrAdjustmentModal({
   );
 }
 
+type ConditionModifierModalState = {
+  filterTarget: ConditionModifierTarget | "all";
+  initialTarget: ConditionModifierTarget;
+};
+
+function formatConditionModifierAppliedLabel(count: number) {
+  return count === 1 ? "Modifier applied" : "Modifiers applied";
+}
+
+function ConditionModifierEditorCard({
+  modifier,
+  onDelete,
+  onSave,
+}: {
+  modifier: CharacterConditionModifierRecord;
+  onDelete: () => void;
+  onSave: (input: {
+    description: string;
+    name: string;
+    target: string;
+    value: number;
+  }) => void;
+}) {
+  const [target, setTarget] = useState(modifier.target);
+  const [name, setName] = useState(modifier.name);
+  const [description, setDescription] = useState(modifier.description);
+  const [value, setValue] = useState(String(modifier.value));
+
+  useEffect(() => {
+    setTarget(modifier.target);
+    setName(modifier.name);
+    setDescription(modifier.description);
+    setValue(String(modifier.value));
+  }, [modifier]);
+
+  const parsedValue = Number.parseInt(value, 10);
+  const numericValue = Number.isFinite(parsedValue) ? parsedValue : 0;
+  const isUnchanged =
+    target === modifier.target &&
+    name === modifier.name &&
+    description === modifier.description &&
+    numericValue === modifier.value;
+
+  return (
+    <form
+      className="rounded-[1.2rem] border border-[var(--line-soft)] bg-[var(--panel-soft)] p-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+
+        if (isUnchanged) {
+          return;
+        }
+
+        onSave({
+          target,
+          name,
+          description,
+          value: numericValue,
+        });
+      }}
+    >
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-[0.72rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
+          {conditionModifierTargetLabels[modifier.target]}
+        </p>
+        <button
+          type="button"
+          className="text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)]"
+          onClick={onDelete}
+        >
+          Remove
+        </button>
+      </div>
+      <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)_140px]">
+        <label className="flex flex-col gap-2">
+          <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
+            Affects
+          </span>
+          <select
+            className="coriolis-select"
+            value={target}
+            onChange={(event) => setTarget(event.target.value as ConditionModifierTarget)}
+          >
+            {conditionModifierTargetOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-2">
+          <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
+            Name
+          </span>
+          <input
+            className="coriolis-input"
+            value={name}
+            placeholder="Exo shell reinforcement"
+            onChange={(event) => setName(event.target.value)}
+          />
+        </label>
+        <label className="flex flex-col gap-2">
+          <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
+            Modifier
+          </span>
+          <input
+            className="coriolis-input text-center"
+            type="number"
+            inputMode="numeric"
+            step={1}
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+          />
+        </label>
+      </div>
+      <label className="mt-4 flex flex-col gap-2">
+        <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
+          Description
+        </span>
+        <textarea
+          className="coriolis-textarea"
+          rows={3}
+          value={description}
+          placeholder="Why this modifier exists and when it matters."
+          onChange={(event) => setDescription(event.target.value)}
+        />
+      </label>
+      <div className="mt-4 flex justify-end">
+        <button type="submit" className="coriolis-chip" disabled={isUnchanged}>
+          Save
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function ConditionModifierModal({
+  characterName,
+  isOpen,
+  modalState,
+  modifiers,
+  onCancel,
+  onCreate,
+  onDelete,
+  onUpdate,
+}: {
+  characterName: string;
+  isOpen: boolean;
+  modalState: ConditionModifierModalState | null;
+  modifiers: CharacterConditionModifierRecord[];
+  onCancel: () => void;
+  onCreate: (input: {
+    description: string;
+    name: string;
+    target: string;
+    value: number;
+  }) => void;
+  onDelete: (modifier: CharacterConditionModifierRecord) => void;
+  onUpdate: (
+    modifier: CharacterConditionModifierRecord,
+    input: {
+      description: string;
+      name: string;
+      target: string;
+      value: number;
+    },
+  ) => void;
+}) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const [filterTarget, setFilterTarget] = useState<ConditionModifierTarget | "all">(
+    modalState?.filterTarget ?? "all",
+  );
+  const [createTarget, setCreateTarget] = useState<ConditionModifierTarget>(
+    modalState?.initialTarget ?? "hitPoints",
+  );
+  const [createName, setCreateName] = useState("");
+  const [createDescription, setCreateDescription] = useState("");
+  const [createValue, setCreateValue] = useState("0");
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCancel();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onCancel]);
+
+  if (!isOpen || !modalState) {
+    return null;
+  }
+
+  const visibleModifiers =
+    filterTarget === "all"
+      ? modifiers
+      : modifiers.filter((modifier) => modifier.target === filterTarget);
+  const parsedCreateValue = Number.parseInt(createValue, 10);
+  const createNumericValue = Number.isFinite(parsedCreateValue) ? parsedCreateValue : 0;
+
+  return (
+    <div className="coriolis-modal coriolis-modal--confirm" onClick={onCancel} role="presentation">
+      <div
+        className="coriolis-modal__dialog max-h-[92vh] overflow-y-auto"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="coriolis-modal__header">
+          <div className="coriolis-modal__copy">
+            <p className="coriolis-modal__eyebrow">Conditions</p>
+            <h2 id={titleId} className="coriolis-modal__title">
+              Track Condition Modifiers
+            </h2>
+            <p id={descriptionId} className="coriolis-modal__description">
+              Add lasting effects for {characterName}. Modifiers change the max size of hit
+              points, mind points, or radiation and stay in the database.
+            </p>
+          </div>
+        </div>
+
+        <div className="coriolis-modal__body space-y-5">
+          <div className="grid gap-4 rounded-[1.2rem] border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.05)] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="font-display text-lg uppercase tracking-[0.12em] text-[var(--paper)]">
+                Add Modifier
+              </p>
+              <label className="flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)]">
+                Show
+                <select
+                  className="coriolis-select min-w-[170px]"
+                  value={filterTarget}
+                  onChange={(event) =>
+                    setFilterTarget(event.target.value as ConditionModifierTarget | "all")
+                  }
+                >
+                  <option value="all">All modifiers</option>
+                  {conditionModifierTargetOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <form
+              className="grid gap-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                onCreate({
+                  target: createTarget,
+                  name: createName,
+                  description: createDescription,
+                  value: createNumericValue,
+                });
+                setCreateName("");
+                setCreateDescription("");
+                setCreateValue("0");
+              }}
+            >
+              <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)_140px]">
+                <label className="flex flex-col gap-2">
+                  <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
+                    Affects
+                  </span>
+                  <select
+                    className="coriolis-select"
+                    value={createTarget}
+                    onChange={(event) =>
+                      setCreateTarget(event.target.value as ConditionModifierTarget)
+                    }
+                  >
+                    {conditionModifierTargetOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-2">
+                  <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
+                    Name
+                  </span>
+                  <input
+                    className="coriolis-input"
+                    value={createName}
+                    placeholder="Blessed talisman"
+                    onChange={(event) => setCreateName(event.target.value)}
+                  />
+                </label>
+                <label className="flex flex-col gap-2">
+                  <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
+                    Modifier
+                  </span>
+                  <input
+                    className="coriolis-input text-center"
+                    type="number"
+                    inputMode="numeric"
+                    step={1}
+                    value={createValue}
+                    onChange={(event) => setCreateValue(event.target.value)}
+                  />
+                </label>
+              </div>
+
+              <label className="flex flex-col gap-2">
+                <span className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
+                  Description
+                </span>
+                <textarea
+                  className="coriolis-textarea"
+                  rows={3}
+                  value={createDescription}
+                  placeholder="Short note for what caused the change."
+                  onChange={(event) => setCreateDescription(event.target.value)}
+                />
+              </label>
+
+              <div className="flex justify-end">
+                <button type="submit" className="coriolis-chip">
+                  Add Modifier
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div className="grid gap-4">
+            {visibleModifiers.length === 0 ? (
+              <div className="rounded-[1.2rem] border border-dashed border-[var(--line-soft)] px-4 py-5 text-sm text-[var(--ink-muted)]">
+                No modifiers in this view yet.
+              </div>
+            ) : null}
+            {visibleModifiers.map((modifier) => (
+              <ConditionModifierEditorCard
+                key={modifier.id}
+                modifier={modifier}
+                onDelete={() => onDelete(modifier)}
+                onSave={(input) => onUpdate(modifier, input)}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="coriolis-modal__actions">
+          <button type="button" className="coriolis-chip" onClick={onCancel}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function describeVariance(actual: number, target: number) {
   if (actual === target) {
     return "Aligned with the starter target.";
@@ -617,6 +998,8 @@ export function RosterApp({
   const [isUploading, setIsUploading] = useState(false);
   const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval | null>(null);
   const [isBirrAdjustmentOpen, setIsBirrAdjustmentOpen] = useState(false);
+  const [conditionModifierModalState, setConditionModifierModalState] =
+    useState<ConditionModifierModalState | null>(null);
   const latestIssuedSkillRequestIds = useRef<Record<string, number>>({});
   const latestConfirmedSkillRequestIds = useRef<Record<string, number>>({});
 
@@ -742,6 +1125,7 @@ export function RosterApp({
     }
 
     setIsBirrAdjustmentOpen(false);
+    setConditionModifierModalState(null);
   }, [selectedCharacter]);
 
   useEffect(() => {
@@ -849,6 +1233,24 @@ export function RosterApp({
     setIsBirrAdjustmentOpen(false);
   }
 
+  function openConditionModifierModal(
+    filterTarget: ConditionModifierTarget | "all",
+    initialTarget: ConditionModifierTarget,
+  ) {
+    if (!selectedCharacter) {
+      return;
+    }
+
+    setConditionModifierModalState({
+      filterTarget,
+      initialTarget,
+    });
+  }
+
+  function closeConditionModifierModal() {
+    setConditionModifierModalState(null);
+  }
+
   function applyBirrAdjustment(delta: number) {
     if (!selectedCharacter) {
       return;
@@ -874,10 +1276,24 @@ export function RosterApp({
     onConfirm();
   }
 
+  function requestConditionModifierRemoval(modifier: CharacterConditionModifierRecord) {
+    requestRemoval({
+      confirmLabel: "Remove",
+      description: `This permanently removes the ${conditionModifierTargetLabels[modifier.target].toLowerCase()} modifier from ${selectedCharacter?.name ?? "the current sheet"}.`,
+      onConfirm: () => {
+        runTask(async () => {
+          const updated = await deleteConditionModifierAction(modifier.id);
+          patchCharacter(updated);
+        }, "Condition modifier removed.");
+      },
+      title: `Remove ${modifier.name.trim() || conditionModifierTargetLabels[modifier.target]}?`,
+    });
+  }
+
   function requestCharacterDeletion(character: CharacterRecord) {
     requestRemoval({
       confirmLabel: "Delete Sheet",
-      description: `This permanently removes ${character.name} and all of the sheet's relationships, talents, weapons, gear, and contacts.`,
+      description: `This permanently removes ${character.name} and all of the sheet's relationships, talents, weapons, gear, contacts, and condition modifiers.`,
       onConfirm: () => {
         runTask(async () => {
           const remaining = await deleteCharacterAction(character.id);
@@ -1173,6 +1589,23 @@ export function RosterApp({
           },
         ]
       : [];
+  const conditionModifierCounts = selectedCharacter
+    ? selectedCharacter.conditionModifiers.reduce<Record<ConditionModifierTarget, number>>(
+        (counts, modifier) => ({
+          ...counts,
+          [modifier.target]: counts[modifier.target] + 1,
+        }),
+        {
+          hitPoints: 0,
+          mindPoints: 0,
+          radiation: 0,
+        },
+      )
+    : {
+        hitPoints: 0,
+        mindPoints: 0,
+        radiation: 0,
+      };
   const activeNavSection =
     quickNavSections.find((section) => section.id === activeSectionId) ?? quickNavSections[0];
   const activeTeamNavSection =
@@ -1584,24 +2017,76 @@ export function RosterApp({
               </div>
             </SectionCard>
 
-            <SectionCard id="conditions" title="Conditions" eyebrow="Trauma">
+            <SectionCard
+              id="conditions"
+              title="Conditions"
+              eyebrow="Trauma"
+              actions={
+                <button
+                  type="button"
+                  className="coriolis-chip"
+                  onClick={() => openConditionModifierModal("all", "hitPoints")}
+                >
+                  Add Modifier
+                </button>
+              }
+            >
               <div className="grid gap-4">
                 <CounterTrack
                   label={`Hit Points (max ${selectedCharacter.maxHitPoints})`}
                   max={selectedCharacter.maxHitPoints}
                   value={selectedCharacter.currentHitPoints}
+                  headerAction={
+                    conditionModifierCounts.hitPoints > 0 ? (
+                      <button
+                        type="button"
+                        className="text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)] underline decoration-[rgba(201,160,80,0.45)] underline-offset-4 transition hover:text-[var(--paper)]"
+                        onClick={() => openConditionModifierModal("hitPoints", "hitPoints")}
+                      >
+                        {formatConditionModifierAppliedLabel(
+                          conditionModifierCounts.hitPoints,
+                        )}
+                      </button>
+                    ) : null
+                  }
                   onCommit={(value) => commitField("currentHitPoints", value)}
                 />
                 <CounterTrack
                   label={`Mind Points (max ${selectedCharacter.maxMindPoints})`}
                   max={selectedCharacter.maxMindPoints}
                   value={selectedCharacter.currentMindPoints}
+                  headerAction={
+                    conditionModifierCounts.mindPoints > 0 ? (
+                      <button
+                        type="button"
+                        className="text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)] underline decoration-[rgba(201,160,80,0.45)] underline-offset-4 transition hover:text-[var(--paper)]"
+                        onClick={() => openConditionModifierModal("mindPoints", "mindPoints")}
+                      >
+                        {formatConditionModifierAppliedLabel(
+                          conditionModifierCounts.mindPoints,
+                        )}
+                      </button>
+                    ) : null
+                  }
                   onCommit={(value) => commitField("currentMindPoints", value)}
                 />
                 <CounterTrack
-                  label="Radiation"
-                  max={10}
+                  label={`Radiation (max ${selectedCharacter.maxRadiation})`}
+                  max={selectedCharacter.maxRadiation}
                   value={selectedCharacter.radiation}
+                  headerAction={
+                    conditionModifierCounts.radiation > 0 ? (
+                      <button
+                        type="button"
+                        className="text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)] underline decoration-[rgba(201,160,80,0.45)] underline-offset-4 transition hover:text-[var(--paper)]"
+                        onClick={() => openConditionModifierModal("radiation", "radiation")}
+                      >
+                        {formatConditionModifierAppliedLabel(
+                          conditionModifierCounts.radiation,
+                        )}
+                      </button>
+                    ) : null
+                  }
                   onCommit={(value) => commitField("radiation", value)}
                 />
                 <SavableNumberField
@@ -2496,6 +2981,37 @@ export function RosterApp({
         pendingRemoval={pendingRemoval}
         onCancel={closeRemovalDialog}
         onConfirm={confirmRemoval}
+      />
+      <ConditionModifierModal
+        key={`${selectedCharacter?.id ?? "none"}-${conditionModifierModalState?.filterTarget ?? "all"}-${conditionModifierModalState?.initialTarget ?? "hitPoints"}`}
+        characterName={selectedCharacter?.name ?? "current explorer"}
+        isOpen={Boolean(selectedCharacter && conditionModifierModalState)}
+        modalState={conditionModifierModalState}
+        modifiers={selectedCharacter?.conditionModifiers ?? []}
+        onCancel={closeConditionModifierModal}
+        onCreate={(input) => {
+          if (!selectedCharacter) {
+            return;
+          }
+
+          runTask(async () => {
+            const updated = await createConditionModifierAction({
+              characterId: selectedCharacter.id,
+              ...input,
+            });
+            patchCharacter(updated);
+          }, "Condition modifier added.");
+        }}
+        onDelete={(modifier) => requestConditionModifierRemoval(modifier)}
+        onUpdate={(modifier, input) => {
+          runTask(async () => {
+            const updated = await updateConditionModifierAction({
+              id: modifier.id,
+              ...input,
+            });
+            patchCharacter(updated);
+          }, "Condition modifier updated.");
+        }}
       />
       <BirrAdjustmentModal
         key={`${selectedCharacter?.id ?? "none"}-${isBirrAdjustmentOpen ? "open" : "closed"}`}

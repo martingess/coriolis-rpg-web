@@ -45,6 +45,7 @@ function makeCharacter(
     portraitPath: null,
     maxHitPoints,
     maxMindPoints,
+    maxRadiation: overrides.maxRadiation ?? 10,
     currentHitPoints: derived.currentHitPoints,
     currentMindPoints: derived.currentMindPoints,
     relationships: seed.relationships.map((relationship, index) => ({
@@ -67,6 +68,7 @@ function makeCharacter(
       id: `${id}-contact-${index}`,
       ...contact,
     })),
+    conditionModifiers: overrides.conditionModifiers ?? [],
     ...overrides,
   };
 }

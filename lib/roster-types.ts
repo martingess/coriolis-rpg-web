@@ -1,5 +1,10 @@
 export type TalentSource = "group" | "concept" | "icon" | "other";
 export const originCultureValues = ["firstcome", "zenithian"] as const;
+export const conditionModifierTargetValues = [
+  "hitPoints",
+  "mindPoints",
+  "radiation",
+] as const;
 export const originSystemValues = [
   "algol",
   "mira",
@@ -10,6 +15,7 @@ export const originSystemValues = [
 ] as const;
 export const upbringingValues = ["plebeian", "stationary", "privileged"] as const;
 export type OriginCulture = (typeof originCultureValues)[number];
+export type ConditionModifierTarget = (typeof conditionModifierTargetValues)[number];
 export type OriginSystem = (typeof originSystemValues)[number];
 export type Upbringing = (typeof upbringingValues)[number];
 export type InventoryKind = "weapon" | "gear" | "tiny";
@@ -70,6 +76,15 @@ export type CharacterContactRecord = {
   notes: string;
 };
 
+export type CharacterConditionModifierRecord = {
+  id: string;
+  order: number;
+  target: ConditionModifierTarget;
+  name: string;
+  description: string;
+  value: number;
+};
+
 export type CharacterRecord = {
   id: string;
   name: string;
@@ -94,6 +109,7 @@ export type CharacterRecord = {
   currentHitPoints: number;
   maxMindPoints: number;
   currentMindPoints: number;
+  maxRadiation: number;
   radiation: number;
   experience: number;
   criticalInjuries: string;
@@ -126,6 +142,7 @@ export type CharacterRecord = {
   weapons: CharacterWeaponRecord[];
   gearItems: CharacterGearItemRecord[];
   contacts: CharacterContactRecord[];
+  conditionModifiers: CharacterConditionModifierRecord[];
 };
 
 export type WeaponPreset = {

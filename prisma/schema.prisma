@@ -58,6 +58,12 @@ enum TeamCrewRole {
   gunner
 }
 
+enum ConditionModifierTarget {
+  hitPoints
+  mindPoints
+  radiation
+}
+
 model Character {
   id                String                  @id @default(cuid())
   name              String
@@ -83,6 +89,7 @@ model Character {
   currentHitPoints  Int                     @default(4)
   maxMindPoints     Int                     @default(4)
   currentMindPoints Int                     @default(4)
+  maxRadiation      Int                     @default(10)
   radiation         Int                     @default(0)
   experience        Int                     @default(0)
   criticalInjuries  String                  @default("")
@@ -118,8 +125,24 @@ model Character {
   backupCrewRoles   TeamCrewPosition[]      @relation("BackupCrewPosition")
   promotedKnownFaces TeamKnownFace[]        @relation("PromotedKnownFace")
   relationships     CharacterRelationship[]
+  conditionModifiers CharacterConditionModifier[]
   talents           CharacterTalent[]
   weapons           CharacterWeapon[]
+}
+
+model CharacterConditionModifier {
+  id          String                  @id @default(cuid())
+  characterId String
+  order       Int
+  target      ConditionModifierTarget
+  name        String                  @default("")
+  description String                  @default("")
+  value       Int                     @default(0)
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  character   Character               @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@index([characterId, order])
 }
 
 model CharacterPortrait {

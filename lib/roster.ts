@@ -8,11 +8,11 @@ import {
 } from "@prisma/client";
 
 import {
-  applyDerivedStats,
+  applyConditionTrackMaximums,
   ATTRIBUTE_MAX,
   ATTRIBUTE_MIN,
   clampNumber,
-  RADIATION_MAX,
+  CONDITION_MODIFIER_ABS_MAX,
   RELOAD_MAX,
   SKILL_MAX,
   SKILL_MIN,
@@ -20,6 +20,7 @@ import {
 import { inventoryCatalog } from "@/lib/coriolis-presets";
 import { prisma } from "@/lib/prisma";
 import {
+  conditionModifierTargetValues,
   originCultureValues,
   originSystemValues,
   upbringingValues,
@@ -27,13 +28,21 @@ import {
 import type {
   CharacterRecord,
   CharacterScalarField,
+  ConditionModifierTarget,
   InventoryKind,
   RepeaterKind,
   TalentSource as TalentSourceValue,
 } from "@/lib/roster-types";
 import { seededCharacters } from "@/lib/seed-data";
 
+type RosterClient = PrismaClient | Prisma.TransactionClient;
+
 export const characterInclude = {
+  conditionModifiers: {
+    orderBy: {
+      order: "asc" as const,
+    },
+  },
   relationships: {
     orderBy: {
       order: "asc" as const,
@@ -111,6 +120,7 @@ const attributeFields = new Set<CharacterScalarField>([
 ]);
 
 const originCultureFieldValues = new Set<string>(originCultureValues);
+const conditionModifierFieldValues = new Set<string>(conditionModifierTargetValues);
 const originSystemFieldValues = new Set<string>(originSystemValues);
 const upbringingFieldValues = new Set<string>(upbringingValues);
 
@@ -139,6 +149,7 @@ export function serializeCharacter(character: CharacterWithRelations): Character
     currentHitPoints: character.currentHitPoints,
     maxMindPoints: character.maxMindPoints,
     currentMindPoints: character.currentMindPoints,
+    maxRadiation: character.maxRadiation,
     radiation: character.radiation,
     experience: character.experience,
     criticalInjuries: character.criticalInjuries,
@@ -211,10 +222,18 @@ export function serializeCharacter(character: CharacterWithRelations): Character
       concept: contact.concept,
       notes: contact.notes,
     })),
+    conditionModifiers: character.conditionModifiers.map((modifier) => ({
+      id: modifier.id,
+      order: modifier.order,
+      target: modifier.target,
+      name: modifier.name,
+      description: modifier.description,
+      value: modifier.value,
+    })),
   };
 }
 
-async function getCharacterOrThrow(characterId: string, client: PrismaClient = prisma) {
+async function getCharacterOrThrow(characterId: string, client: RosterClient = prisma) {
   const character = await client.character.findUnique({
     where: {
       id: characterId,
@@ -354,13 +373,15 @@ async function createSeedCharacter(
   sample: (typeof seededCharacters)[number],
   client: PrismaClient,
 ) {
-  const derived = applyDerivedStats({
+  const derived = calculateConditionTrackState({
     strength: sample.strength,
     agility: sample.agility,
     wits: sample.wits,
     empathy: sample.empathy,
     currentHitPoints: sample.currentHitPoints,
     currentMindPoints: sample.currentMindPoints,
+    radiation: sample.radiation,
+    modifiers: [],
   });
 
   return client.character.create({
@@ -386,7 +407,8 @@ async function createSeedCharacter(
       currentHitPoints: derived.currentHitPoints,
       maxMindPoints: derived.maxMindPoints,
       currentMindPoints: derived.currentMindPoints,
-      radiation: sample.radiation,
+      maxRadiation: derived.maxRadiation,
+      radiation: derived.radiation,
       experience: sample.experience,
       criticalInjuries: sample.criticalInjuries,
       notes: sample.notes,
@@ -474,8 +496,12 @@ function getBlankCharacterData(sequence: number): Prisma.CharacterCreateInput {
     empathy: 2,
     currentHitPoints: 4,
     currentMindPoints: 4,
+    radiation: 0,
   };
-  const derived = applyDerivedStats(base);
+  const derived = calculateConditionTrackState({
+    ...base,
+    modifiers: [],
+  });
 
   return {
     name: getDefaultCharacterName(sequence),
@@ -485,6 +511,7 @@ function getBlankCharacterData(sequence: number): Prisma.CharacterCreateInput {
     currentHitPoints: derived.currentHitPoints,
     maxMindPoints: derived.maxMindPoints,
     currentMindPoints: derived.currentMindPoints,
+    maxRadiation: derived.maxRadiation,
   };
 }
 
@@ -598,6 +625,97 @@ function parseOptionalEnumValue<T extends string>(
   return parsedValue as T;
 }
 
+function parseConditionModifierTarget(rawValue: string | number) {
+  const parsedValue = parseOptionalEnumValue<ConditionModifierTarget>(
+    rawValue,
+    conditionModifierFieldValues,
+    "condition modifier target",
+  );
+
+  if (!parsedValue) {
+    throw new Error("Condition modifier target is required.");
+  }
+
+  return parsedValue;
+}
+
+function parseConditionModifierValue(rawValue: string | number) {
+  return clampNumber(
+    parseIntegerValue(rawValue),
+    -CONDITION_MODIFIER_ABS_MAX,
+    CONDITION_MODIFIER_ABS_MAX,
+  );
+}
+
+function calculateConditionTrackState(input: {
+  agility: number;
+  currentHitPoints: number;
+  currentMindPoints: number;
+  empathy: number;
+  modifiers: Array<{ target: ConditionModifierTarget; value: number }>;
+  radiation: number;
+  strength: number;
+  wits: number;
+}) {
+  return applyConditionTrackMaximums({
+    agility: input.agility,
+    currentHitPoints: input.currentHitPoints,
+    currentMindPoints: input.currentMindPoints,
+    empathy: input.empathy,
+    modifiers: input.modifiers.map((modifier) => ({
+      target: modifier.target,
+      value: modifier.value,
+    })),
+    radiation: input.radiation,
+    strength: input.strength,
+    wits: input.wits,
+  });
+}
+
+async function refreshCharacterConditionState(
+  characterId: string,
+  client: RosterClient = prisma,
+) {
+  const character = await client.character.findUnique({
+    where: {
+      id: characterId,
+    },
+    include: {
+      conditionModifiers: true,
+    },
+  });
+
+  if (!character) {
+    throw new Error(`Character ${characterId} not found.`);
+  }
+
+  const nextState = calculateConditionTrackState({
+    strength: character.strength,
+    agility: character.agility,
+    wits: character.wits,
+    empathy: character.empathy,
+    currentHitPoints: character.currentHitPoints,
+    currentMindPoints: character.currentMindPoints,
+    radiation: character.radiation,
+    modifiers: character.conditionModifiers,
+  });
+
+  return client.character.update({
+    where: {
+      id: characterId,
+    },
+    data: {
+      maxHitPoints: nextState.maxHitPoints,
+      currentHitPoints: nextState.currentHitPoints,
+      maxMindPoints: nextState.maxMindPoints,
+      currentMindPoints: nextState.currentMindPoints,
+      maxRadiation: nextState.maxRadiation,
+      radiation: nextState.radiation,
+    },
+    include: characterInclude,
+  });
+}
+
 export async function updateCharacterField(
   characterId: string,
   field: CharacterScalarField,
@@ -607,6 +725,9 @@ export async function updateCharacterField(
   const existing = await client.character.findUnique({
     where: {
       id: characterId,
+    },
+    include: {
+      conditionModifiers: true,
     },
   });
 
@@ -645,10 +766,12 @@ export async function updateCharacterField(
       [field]: clampNumber(parseIntegerValue(rawValue), ATTRIBUTE_MIN, ATTRIBUTE_MAX),
     };
 
-    const derived = applyDerivedStats({
+    const derived = calculateConditionTrackState({
       ...nextAttributes,
       currentHitPoints: existing.currentHitPoints,
       currentMindPoints: existing.currentMindPoints,
+      radiation: existing.radiation,
+      modifiers: existing.conditionModifiers,
     });
 
     data[field] = nextAttributes[field];
@@ -656,6 +779,8 @@ export async function updateCharacterField(
     data.currentHitPoints = derived.currentHitPoints;
     data.maxMindPoints = derived.maxMindPoints;
     data.currentMindPoints = derived.currentMindPoints;
+    data.maxRadiation = derived.maxRadiation;
+    data.radiation = derived.radiation;
   } else if (skillFields.has(field)) {
     data[field] = clampNumber(parseIntegerValue(rawValue), SKILL_MIN, SKILL_MAX);
   } else {
@@ -672,7 +797,7 @@ export async function updateCharacterField(
         data.currentMindPoints = clampNumber(value, 0, existing.maxMindPoints);
         break;
       case "radiation":
-        data.radiation = clampNumber(value, 0, RADIATION_MAX);
+        data.radiation = clampNumber(value, 0, existing.maxRadiation);
         break;
       case "experience":
         data.experience = Math.max(0, value);
@@ -767,6 +892,99 @@ export async function createRepeaterItem(
   }
 
   return serializeCharacter(await getCharacterOrThrow(characterId, client));
+}
+
+export async function createConditionModifier(
+  input: {
+    characterId: string;
+    description: string;
+    name: string;
+    target: string;
+    value: number | string;
+  },
+  client: PrismaClient = prisma,
+) {
+  return client.$transaction(async (tx) => {
+    const order =
+      (await tx.characterConditionModifier.count({
+        where: {
+          characterId: input.characterId,
+        },
+      })) + 1;
+
+    await tx.characterConditionModifier.create({
+      data: {
+        characterId: input.characterId,
+        order,
+        target: parseConditionModifierTarget(input.target),
+        name: input.name.trim(),
+        description: input.description.trim(),
+        value: parseConditionModifierValue(input.value),
+      },
+    });
+
+    return serializeCharacter(await refreshCharacterConditionState(input.characterId, tx));
+  });
+}
+
+export async function updateConditionModifier(
+  id: string,
+  input: {
+    description: string;
+    name: string;
+    target: string;
+    value: number | string;
+  },
+  client: PrismaClient = prisma,
+) {
+  return client.$transaction(async (tx) => {
+    const existing = await tx.characterConditionModifier.findUnique({
+      where: { id },
+      select: {
+        characterId: true,
+      },
+    });
+
+    if (!existing) {
+      throw new Error(`Condition modifier ${id} not found.`);
+    }
+
+    await tx.characterConditionModifier.update({
+      where: { id },
+      data: {
+        target: parseConditionModifierTarget(input.target),
+        name: input.name.trim(),
+        description: input.description.trim(),
+        value: parseConditionModifierValue(input.value),
+      },
+    });
+
+    return serializeCharacter(await refreshCharacterConditionState(existing.characterId, tx));
+  });
+}
+
+export async function deleteConditionModifier(
+  id: string,
+  client: PrismaClient = prisma,
+) {
+  return client.$transaction(async (tx) => {
+    const existing = await tx.characterConditionModifier.findUnique({
+      where: { id },
+      select: {
+        characterId: true,
+      },
+    });
+
+    if (!existing) {
+      throw new Error(`Condition modifier ${id} not found.`);
+    }
+
+    await tx.characterConditionModifier.delete({
+      where: { id },
+    });
+
+    return serializeCharacter(await refreshCharacterConditionState(existing.characterId, tx));
+  });
 }
 
 export async function addInventoryPreset(

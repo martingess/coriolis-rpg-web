@@ -158,6 +158,62 @@ test("desktop layout keeps the full sheet readable", async ({ page }) => {
   await expect(hitPointsTrack).toContainText("5/7");
 });
 
+test("condition modifiers support full CRUD and update condition caps", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 960 });
+  await page.goto("/");
+  await page.getByRole("button", { name: /Sabah al-Malik/i }).click();
+
+  const conditionsSection = page
+    .getByRole("heading", { name: "Conditions" })
+    .locator("xpath=ancestor::section[1]");
+
+  await conditionsSection.getByRole("button", { name: "Add Modifier" }).click();
+
+  const modifierDialog = page.getByRole("dialog", { name: "Track Condition Modifiers" });
+  await expect(modifierDialog).toBeVisible();
+  await modifierDialog.getByLabel("Affects").first().selectOption("mindPoints");
+  await modifierDialog.getByLabel("Name").first().fill("Meditation focus");
+  await modifierDialog.getByLabel("Modifier").first().fill("2");
+  await modifierDialog
+    .getByLabel("Description")
+    .first()
+    .fill("A calm ritual expands the explorer's mental reserves.");
+  await modifierDialog.getByRole("button", { name: "Add Modifier" }).click();
+
+  const mindPointsTrack = conditionsSection.getByRole("group", {
+    name: /Mind Points \(max 9\)/i,
+  });
+  await expect(mindPointsTrack).toContainText("5/9");
+  await expect(
+    conditionsSection.getByRole("button", { name: "Modifier applied" }),
+  ).toBeVisible();
+
+  await modifierDialog.getByRole("button", { name: "Close" }).click();
+  await conditionsSection.getByRole("button", { name: "Modifier applied" }).click();
+  const modifierCard = modifierDialog
+    .locator('input[value="Meditation focus"]')
+    .locator("xpath=ancestor::form[1]");
+
+  await modifierCard.getByLabel("Modifier").fill("-1");
+  await modifierCard.getByRole("button", { name: "Save" }).click();
+  await expect(
+    conditionsSection.getByRole("group", { name: /Mind Points \(max 6\)/i }),
+  ).toContainText("5/6");
+
+  await modifierCard.getByRole("button", { name: "Remove" }).click();
+  await page
+    .getByRole("dialog", { name: "Remove Meditation focus?" })
+    .getByRole("button", { name: "Remove" })
+    .click();
+
+  await expect(
+    conditionsSection.getByRole("group", { name: /Mind Points \(max 7\)/i }),
+  ).toContainText("5/7");
+  await expect(
+    conditionsSection.getByRole("button", { name: "Modifier applied" }),
+  ).toHaveCount(0);
+});
+
 test("remove actions ask for confirmation before deleting data", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 960 });
   await page.goto("/");

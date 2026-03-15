@@ -222,6 +222,7 @@ export function SavableSelectField({
 }
 
 type CounterTrackProps = {
+  headerAction?: ReactNode;
   label: string;
   max: number;
   onCommit: CommitHandler<number>;
@@ -230,7 +231,8 @@ type CounterTrackProps = {
 
 type SegmentedValueFieldProps = {
   className?: string;
-  hint?: string;
+  headerAction?: ReactNode;
+  hint?: ReactNode;
   label: string;
   max: number;
   onCommit: CommitHandler<number>;
@@ -239,6 +241,7 @@ type SegmentedValueFieldProps = {
 
 export function SegmentedValueField({
   className = "",
+  headerAction,
   hint,
   label,
   max,
@@ -256,17 +259,20 @@ export function SegmentedValueField({
       aria-describedby={hint ? hintId : undefined}
     >
       <div className="flex items-center justify-between gap-3">
-        <span
-          id={labelId}
-          className="text-[0.76rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]"
-        >
-          {label}
-        </span>
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            id={labelId}
+            className="text-[0.76rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]"
+          >
+            {label}
+          </span>
+          {headerAction ? <div className="shrink-0">{headerAction}</div> : null}
+        </div>
         <span className="text-sm font-medium text-[var(--ink)]">
           {value}/{max}
         </span>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="coriolis-counter-track flex flex-wrap gap-2">
         {Array.from({ length: max }, (_, index) => {
           const isActive = index < value;
 
@@ -274,7 +280,9 @@ export function SegmentedValueField({
             <button
               key={`${label}-${index}`}
               type="button"
-              className={`coriolis-counter ${isActive ? "coriolis-counter--active" : ""}`}
+              className={`coriolis-counter coriolis-counter--track ${
+                isActive ? "coriolis-counter--active" : ""
+              }`}
               aria-label={
                 value === index + 1
                   ? `${label}: decrease to ${index}`

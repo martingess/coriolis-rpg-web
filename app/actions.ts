@@ -4,12 +4,15 @@ import { revalidatePath } from "next/cache";
 
 import {
   addInventoryPreset,
+  createConditionModifier,
   createCharacter,
   createRepeaterItem,
+  deleteConditionModifier,
   deleteCharacter,
   deleteRepeaterItem,
   renameCharacter,
   setBuddy,
+  updateConditionModifier,
   updateCharacterField,
   updateRepeaterField,
 } from "@/lib/roster";
@@ -57,6 +60,36 @@ export async function updateCharacterFieldAction(input: {
   value: number | string;
 }) {
   const character = await updateCharacterField(input.characterId, input.field, input.value);
+  revalidatePath("/");
+  return character;
+}
+
+export async function createConditionModifierAction(input: {
+  characterId: string;
+  description: string;
+  name: string;
+  target: string;
+  value: number | string;
+}) {
+  const character = await createConditionModifier(input);
+  revalidatePath("/");
+  return character;
+}
+
+export async function updateConditionModifierAction(input: {
+  id: string;
+  description: string;
+  name: string;
+  target: string;
+  value: number | string;
+}) {
+  const character = await updateConditionModifier(input.id, input);
+  revalidatePath("/");
+  return character;
+}
+
+export async function deleteConditionModifierAction(id: string) {
+  const character = await deleteConditionModifier(id);
   revalidatePath("/");
   return character;
 }

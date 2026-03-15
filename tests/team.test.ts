@@ -14,7 +14,7 @@ afterEach(() => {
 
 describe("team dossier behavior", () => {
   it("creates a singleton team with the default five crew stations", async () => {
-    const client = createTestClient();
+    const client = await createTestClient();
 
     try {
       const firstTeam = await getTeam(client);
@@ -34,7 +34,7 @@ describe("team dossier behavior", () => {
   });
 
   it("promotes a known face into a crew sheet and keeps the link on the team", async () => {
-    const client = createTestClient();
+    const client = await createTestClient();
 
     try {
       const team = await getTeam(client);

@@ -6,6 +6,7 @@ export const SKILL_MIN = 0;
 export const SKILL_MAX = 5;
 export const RADIATION_MAX = 10;
 export const RELOAD_MAX = 6;
+export const CONDITION_MODIFIER_ABS_MAX = 20;
 
 const skillPointFields = [
   "dexterity",
@@ -140,6 +141,17 @@ export type DerivedStatInput = {
   wits: number;
 };
 
+export type ConditionModifierTotals = {
+  hitPoints: number;
+  mindPoints: number;
+  radiation: number;
+};
+
+type ConditionModifierLike = {
+  target: keyof ConditionModifierTotals;
+  value: number;
+};
+
 export function clampNumber(value: number, min: number, max: number) {
   return Math.min(Math.max(Number.isFinite(value) ? value : min, min), max);
 }
@@ -152,6 +164,66 @@ export function calculateMaxHitPoints(strength: number, agility: number) {
 export function calculateMaxMindPoints(wits: number, empathy: number) {
   return clampNumber(wits, ATTRIBUTE_MIN, ATTRIBUTE_MAX) +
     clampNumber(empathy, ATTRIBUTE_MIN, ATTRIBUTE_MAX);
+}
+
+export function sumConditionModifierTotals(
+  modifiers: ConditionModifierLike[],
+): ConditionModifierTotals {
+  return modifiers.reduce<ConditionModifierTotals>(
+    (totals, modifier) => ({
+      ...totals,
+      [modifier.target]:
+        totals[modifier.target] +
+        clampNumber(modifier.value, -CONDITION_MODIFIER_ABS_MAX, CONDITION_MODIFIER_ABS_MAX),
+    }),
+    {
+      hitPoints: 0,
+      mindPoints: 0,
+      radiation: 0,
+    },
+  );
+}
+
+export function calculateEffectiveConditionMaximums(input: {
+  agility: number;
+  empathy: number;
+  modifiers: ConditionModifierLike[];
+  strength: number;
+  wits: number;
+}) {
+  const totals = sumConditionModifierTotals(input.modifiers);
+
+  return {
+    maxHitPoints: Math.max(
+      1,
+      calculateMaxHitPoints(input.strength, input.agility) + totals.hitPoints,
+    ),
+    maxMindPoints: Math.max(
+      1,
+      calculateMaxMindPoints(input.wits, input.empathy) + totals.mindPoints,
+    ),
+    maxRadiation: Math.max(1, RADIATION_MAX + totals.radiation),
+  };
+}
+
+export function applyConditionTrackMaximums(input: {
+  agility: number;
+  currentHitPoints: number;
+  currentMindPoints: number;
+  empathy: number;
+  modifiers: ConditionModifierLike[];
+  radiation: number;
+  strength: number;
+  wits: number;
+}) {
+  const maximums = calculateEffectiveConditionMaximums(input);
+
+  return {
+    ...maximums,
+    currentHitPoints: clampNumber(input.currentHitPoints, 0, maximums.maxHitPoints),
+    currentMindPoints: clampNumber(input.currentMindPoints, 0, maximums.maxMindPoints),
+    radiation: clampNumber(input.radiation, 0, maximums.maxRadiation),
+  };
 }
 
 export function applyDerivedStats(input: DerivedStatInput) {
