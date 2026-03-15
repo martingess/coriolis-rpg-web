@@ -22,6 +22,7 @@ import {
   CounterTrack,
   SavableNumberField,
   SavableSelectField,
+  SegmentedValueField,
   SavableTextField,
   SectionCard,
 } from "@/components/field-controls";
@@ -100,6 +101,11 @@ const advancedSkills: Array<{ field: CharacterScalarField; label: string }> = [
   { field: "science", label: "Science" },
   { field: "technology", label: "Technology" },
 ];
+
+const skillGroups = [
+  { id: "general", title: "General Skills", skills: generalSkills },
+  { id: "advanced", title: "Advanced Skills", skills: advancedSkills },
+] as const;
 
 const talentSourceOptions = [
   { value: "group", label: "Group" },
@@ -1377,30 +1383,26 @@ export function RosterApp({
               className="lg:col-span-2"
             >
               <div className="grid gap-5 lg:grid-cols-2">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {generalSkills.map((skill) => (
-                    <SavableNumberField
-                      key={skill.field}
-                      label={skill.label}
-                      min={0}
-                      max={5}
-                      value={selectedCharacter[skill.field] as number}
-                      onCommit={(value) => commitField(skill.field, value)}
-                    />
-                  ))}
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {advancedSkills.map((skill) => (
-                    <SavableNumberField
-                      key={skill.field}
-                      label={skill.label}
-                      min={0}
-                      max={5}
-                      value={selectedCharacter[skill.field] as number}
-                      onCommit={(value) => commitField(skill.field, value)}
-                    />
-                  ))}
-                </div>
+                {skillGroups.map((group) => (
+                  <div key={group.id} className="grid gap-4">
+                    <div className="space-y-1 px-1">
+                      <p className="text-[0.72rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
+                        {group.title}
+                      </p>
+                    </div>
+                    <div className="grid gap-4">
+                      {group.skills.map((skill) => (
+                        <SegmentedValueField
+                          key={skill.field}
+                          label={skill.label}
+                          max={5}
+                          value={selectedCharacter[skill.field] as number}
+                          onCommit={(value) => commitField(skill.field, value)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </SectionCard>
 

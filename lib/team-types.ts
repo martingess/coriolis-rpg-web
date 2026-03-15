@@ -45,6 +45,7 @@ export type TeamStoryBeatRecord = {
   order: number;
   title: string;
   description: string;
+  createdAt: string;
 };
 
 export type TeamNoteRecord = {

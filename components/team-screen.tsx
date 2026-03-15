@@ -6,6 +6,7 @@ import {
   SavableTextField,
   SectionCard,
 } from "@/components/field-controls";
+import { TeamStoryTimeline } from "@/components/team-story-timeline";
 import type { CharacterRecord } from "@/lib/roster-types";
 import {
   groupConceptValues,
@@ -721,57 +722,14 @@ export function TeamScreen({
         </div>
       </SectionCard>
 
-      <SectionCard
-        id="team-timeline"
-        title="Timeline"
-        eyebrow="Major Events"
-        className="xl:col-span-2"
-        actions={
-          <button
-            type="button"
-            className="coriolis-chip"
-            onClick={() => onCreateRepeater("storyBeat")}
-          >
-            Add Beat
-          </button>
+      <TeamStoryTimeline
+        storyBeats={team.storyBeats}
+        onCreateBeat={() => onCreateRepeater("storyBeat")}
+        onRemoveBeat={(beatId) => onRemoveRepeater("storyBeat", beatId)}
+        onUpdateBeat={(beatId, field, value) =>
+          onUpdateRepeater("storyBeat", beatId, field, value)
         }
-      >
-        <div className="grid gap-4">
-          {team.storyBeats.length === 0 ? (
-            <p className="rounded-[1.2rem] border border-dashed border-[var(--line-soft)] px-4 py-5 text-sm text-[var(--ink-muted)]">
-              Pin major jumps, betrayals, discoveries, and debts paid in blood or birr.
-            </p>
-          ) : null}
-          {team.storyBeats.map((beat) => (
-            <div key={beat.id} className="rounded-[1.35rem] border border-[var(--line-soft)] bg-[var(--panel-soft)] p-4">
-              <div className="mb-4 flex justify-end">
-                <button
-                  type="button"
-                  className="text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)]"
-                  onClick={() => onRemoveRepeater("storyBeat", beat.id)}
-                >
-                  Remove
-                </button>
-              </div>
-              <SavableTextField
-                label="Event"
-                value={beat.title}
-                onCommit={(value) => onUpdateRepeater("storyBeat", beat.id, "title", value)}
-              />
-              <SavableTextField
-                className="mt-4"
-                label="What Changed"
-                multiline
-                rows={4}
-                value={beat.description}
-                onCommit={(value) =>
-                  onUpdateRepeater("storyBeat", beat.id, "description", value)
-                }
-              />
-            </div>
-          ))}
-        </div>
-      </SectionCard>
+      />
 
       <SectionCard
         id="team-faces"

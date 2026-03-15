@@ -114,6 +114,7 @@ function serializeTeam(team: TeamWithRelations): TeamRecord {
       order: beat.order,
       title: beat.title,
       description: beat.description,
+      createdAt: beat.createdAt.toISOString(),
     })),
     notes: team.notes.map((note) => ({
       id: note.id,

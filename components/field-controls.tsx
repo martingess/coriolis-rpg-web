@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 type CommitHandler<T> = (value: T) => Promise<void> | void;
 
@@ -207,16 +207,38 @@ type CounterTrackProps = {
   value: number;
 };
 
-export function CounterTrack({
+type SegmentedValueFieldProps = {
+  className?: string;
+  hint?: string;
+  label: string;
+  max: number;
+  onCommit: CommitHandler<number>;
+  value: number;
+};
+
+export function SegmentedValueField({
+  className = "",
+  hint,
   label,
   max,
   onCommit,
   value,
-}: CounterTrackProps) {
+}: SegmentedValueFieldProps) {
+  const labelId = useId();
+  const hintId = useId();
+
   return (
-    <div className="flex flex-col gap-3 rounded-[1.4rem] border border-[var(--line-strong)] bg-[var(--panel-soft)] px-4 py-4 shadow-[0_18px_60px_rgba(9,12,18,0.22)]">
+    <div
+      className={`flex flex-col gap-3 rounded-[1.4rem] border border-[var(--line-strong)] bg-[var(--panel-soft)] px-4 py-4 shadow-[0_18px_60px_rgba(9,12,18,0.22)] ${className}`}
+      role="group"
+      aria-labelledby={labelId}
+      aria-describedby={hint ? hintId : undefined}
+    >
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[0.76rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
+        <span
+          id={labelId}
+          className="text-[0.76rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]"
+        >
           {label}
         </span>
         <span className="text-sm font-medium text-[var(--ink)]">
@@ -232,6 +254,12 @@ export function CounterTrack({
               key={`${label}-${index}`}
               type="button"
               className={`coriolis-counter ${isActive ? "coriolis-counter--active" : ""}`}
+              aria-label={
+                value === index + 1
+                  ? `${label}: decrease to ${index}`
+                  : `${label}: set to ${index + 1}`
+              }
+              aria-pressed={isActive}
               onClick={() => {
                 const nextValue = value === index + 1 ? index : index + 1;
                 void onCommit(nextValue);
@@ -240,8 +268,17 @@ export function CounterTrack({
           );
         })}
       </div>
+      {hint ? (
+        <span id={hintId} className="text-xs text-[var(--ink-muted)]">
+          {hint}
+        </span>
+      ) : null}
     </div>
   );
+}
+
+export function CounterTrack(props: CounterTrackProps) {
+  return <SegmentedValueField {...props} />;
 }
 
 type SectionCardProps = {

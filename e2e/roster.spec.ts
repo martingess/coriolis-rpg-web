@@ -46,6 +46,14 @@ test("mobile roster flow persists edits and inventory", async ({ page }) => {
   await experienceField.fill("12");
   await experienceField.press("Tab");
 
+  const skillsSection = page
+    .getByRole("heading", { name: "Skills" })
+    .locator("xpath=ancestor::section[1]");
+  await expect(skillsSection.getByRole("spinbutton")).toHaveCount(0);
+  const dexterityTrack = skillsSection.getByRole("group", { name: "Dexterity" });
+  await dexterityTrack.getByRole("button", { name: "Dexterity: set to 2" }).click();
+  await expect(dexterityTrack).toContainText("2/5");
+
   await page.locator('input[type="file"]').setInputFiles({
     name: "portrait.png",
     mimeType: "image/png",
@@ -73,6 +81,12 @@ test("mobile roster flow persists edits and inventory", async ({ page }) => {
   const persistedGearSection = page
     .getByRole("heading", { name: "Gear" })
     .locator("xpath=ancestor::section[1]");
+  const persistedSkillsSection = page
+    .getByRole("heading", { name: "Skills" })
+    .locator("xpath=ancestor::section[1]");
+  const persistedDexterityTrack = persistedSkillsSection.getByRole("group", {
+    name: "Dexterity",
+  });
 
   await expect(page.getByLabel("Name").first()).toHaveValue("Layla Kassar");
   await expect(page.getByLabel("Background").first()).toHaveValue("Stationary from Mira");
@@ -81,6 +95,8 @@ test("mobile roster flow persists edits and inventory", async ({ page }) => {
   await expect(page.getByLabel("Upbringing").first()).toHaveValue("stationary");
   await expect(page.getByLabel("Experience").first()).toHaveValue("12");
   await expect(starterRulesSection.getByText("Stationary starter bundle")).toBeVisible();
+  await expect(persistedSkillsSection.getByRole("spinbutton")).toHaveCount(0);
+  await expect(persistedDexterityTrack).toContainText("2/5");
   await expect(persistedGearSection.getByLabel("Item").first()).toHaveValue("Custom gear");
   await expect(page.getByLabel("Other PC").first()).toHaveValue("Sabah al-Malik");
   await expect(
@@ -91,10 +107,22 @@ test("mobile roster flow persists edits and inventory", async ({ page }) => {
 test("desktop layout keeps the full sheet readable", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 960 });
   await page.goto("/");
+  await page.getByRole("button", { name: /Sabah al-Malik/i }).click();
+
+  const conditionsSection = page
+    .getByRole("heading", { name: "Conditions" })
+    .locator("xpath=ancestor::section[1]");
+  const hitPointsTrack = conditionsSection.getByRole("group", {
+    name: /Hit Points \(max 7\)/i,
+  });
 
   await expect(page.getByRole("heading", { name: "Skills" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Starter Rules" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Weapons" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "People I've Met" })).toBeVisible();
   await expect(page.getByRole("button", { name: "New" })).toBeVisible();
+  await hitPointsTrack
+    .getByRole("button", { name: "Hit Points (max 7): set to 5" })
+    .click();
+  await expect(hitPointsTrack).toContainText("5/7");
 });
