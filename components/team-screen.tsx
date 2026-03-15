@@ -1,7 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
 import {
   SavableNumberField,
   SavableSelectField,
@@ -28,7 +26,7 @@ import type {
   TeamRecord,
 } from "@/lib/team-types";
 
-const teamQuickNavSections = [
+export const teamQuickNavSections = [
   { id: "team-identity", label: "Team Story", eyebrow: "Bridge Dossier" },
   { id: "team-members", label: "Members", eyebrow: "Crew Grid" },
   { id: "team-roles", label: "Crew Roles", eyebrow: "Bridge Stations" },
@@ -40,7 +38,7 @@ const teamQuickNavSections = [
   { id: "team-notes", label: "Typed Notes", eyebrow: "Operational Memory" },
 ] as const;
 
-type TeamQuickNavSectionId = (typeof teamQuickNavSections)[number]["id"];
+export type TeamQuickNavSectionId = (typeof teamQuickNavSections)[number]["id"];
 
 const roleWeights: Record<
   TeamCrewRole,
@@ -177,10 +175,6 @@ export function TeamScreen({
   onUpdateRepeater,
   team,
 }: TeamScreenProps) {
-  const [activeSectionId, setActiveSectionId] = useState<TeamQuickNavSectionId>(
-    teamQuickNavSections[0].id,
-  );
-
   const charactersById = new Map(characters.map((character) => [character.id, character]));
   const rolesByCharacterId = new Map<string, string[]>();
 
@@ -235,107 +229,8 @@ export function TeamScreen({
     })),
   ];
 
-  useEffect(() => {
-    const sectionNodes = teamQuickNavSections
-      .map((section) => document.getElementById(section.id))
-      .filter((section): section is HTMLElement => section instanceof HTMLElement);
-
-    if (sectionNodes.length === 0) {
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visibleEntries = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((entryA, entryB) => {
-            const guideLine = window.innerHeight * 0.34;
-            const distanceA = Math.abs(entryA.boundingClientRect.top - guideLine);
-            const distanceB = Math.abs(entryB.boundingClientRect.top - guideLine);
-
-            if (distanceA !== distanceB) {
-              return distanceA - distanceB;
-            }
-
-            return entryA.boundingClientRect.top - entryB.boundingClientRect.top;
-          });
-
-        const nextSection = visibleEntries[0]?.target.id as TeamQuickNavSectionId | undefined;
-
-        if (nextSection) {
-          setActiveSectionId(nextSection);
-        }
-      },
-      {
-        rootMargin: "-24% 0px -58% 0px",
-        threshold: [0.18, 0.3, 0.45, 0.62],
-      },
-    );
-
-    sectionNodes.forEach((section) => observer.observe(section));
-
-    return () => observer.disconnect();
-  }, [team.id]);
-
-  function jumpToSection(sectionId: TeamQuickNavSectionId) {
-    const section = document.getElementById(sectionId);
-
-    if (!section) {
-      return;
-    }
-
-    setActiveSectionId(sectionId);
-    section.scrollIntoView({ behavior: "auto", block: "start" });
-  }
-
   return (
-    <div className="grid gap-4 xl:gap-5">
-      <div className="coriolis-quick-nav">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3">
-            <p className="text-[0.68rem] uppercase tracking-[0.36em] text-[var(--ink-faint)]">
-              Team Nav
-            </p>
-            <div className="hidden h-px w-20 bg-[linear-gradient(90deg,rgba(201,160,80,0.3),transparent)] md:block" />
-            <p className="hidden text-sm text-[var(--ink-muted)] md:block">
-              Shared crew state, ship pressure, and the people orbiting your story.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 self-start rounded-full border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.04)] px-3 py-1 text-[0.68rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
-            <span className="h-2 w-2 rounded-full bg-[var(--gold)] shadow-[0_0_14px_rgba(201,160,80,0.5)]" />
-            {teamQuickNavSections.find((section) => section.id === activeSectionId)?.label}
-          </div>
-        </div>
-
-        <div className="coriolis-quick-nav__rail" aria-label="Team navigation">
-          {teamQuickNavSections.map((section, index) => {
-            const isActive = section.id === activeSectionId;
-
-            return (
-              <button
-                key={section.id}
-                type="button"
-                className={`coriolis-quick-nav__button ${
-                  isActive ? "coriolis-quick-nav__button--active" : ""
-                }`}
-                aria-current={isActive ? "location" : undefined}
-                onClick={() => jumpToSection(section.id)}
-              >
-                <span className="text-[0.62rem] uppercase tracking-[0.3em] text-[var(--ink-faint)]">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <span className="text-sm uppercase tracking-[0.18em] text-[var(--paper)]">
-                  {section.label}
-                </span>
-                <span className="text-[0.62rem] uppercase tracking-[0.24em] text-[var(--ink-muted)]">
-                  {section.eyebrow}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
+    <div className="grid grid-cols-1 gap-4 xl:gap-5">
       <SectionCard
         id="team-identity"
         title="Team Story"
@@ -672,7 +567,7 @@ export function TeamScreen({
         </div>
       </SectionCard>
 
-      <div className="grid gap-4 xl:grid-cols-2 xl:gap-5">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:gap-5">
         <SectionCard id="team-ship" title="Ship" eyebrow="Heart of the Crew">
           <div className="grid gap-4">
             <div className="grid gap-4 md:grid-cols-2">

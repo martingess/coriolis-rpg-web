@@ -25,7 +25,11 @@ import {
   SavableTextField,
   SectionCard,
 } from "@/components/field-controls";
-import { TeamScreen } from "@/components/team-screen";
+import {
+  TeamScreen,
+  teamQuickNavSections,
+  type TeamQuickNavSectionId,
+} from "@/components/team-screen";
 import {
   calculateStarterGuidance,
   formatEncumbranceUnits,
@@ -178,11 +182,80 @@ const allQuickNavSections = [
 ] as const;
 
 type QuickNavSectionId = (typeof allQuickNavSections)[number]["id"];
+type HeaderQuickNavSection<TSectionId extends string> = {
+  id: TSectionId;
+  label: string;
+  eyebrow: string;
+};
+
+type HeaderQuickNavProps<TSectionId extends string> = {
+  activeLabel: string;
+  activeSectionId: TSectionId;
+  ariaLabel: string;
+  description: string;
+  onJumpToSection: (sectionId: TSectionId) => void;
+  sections: readonly HeaderQuickNavSection<TSectionId>[];
+};
 
 const birrFormatter = new Intl.NumberFormat("en-US");
 
 function formatBirr(value: number) {
   return `${birrFormatter.format(value)} birr`;
+}
+
+function HeaderQuickNav<TSectionId extends string>({
+  activeLabel,
+  activeSectionId,
+  ariaLabel,
+  description,
+  onJumpToSection,
+  sections,
+}: HeaderQuickNavProps<TSectionId>) {
+  return (
+    <div className="coriolis-quick-nav">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-3">
+          <p className="text-[0.68rem] uppercase tracking-[0.36em] text-[var(--ink-faint)]">
+            Quick Nav
+          </p>
+          <div className="hidden h-px w-20 bg-[linear-gradient(90deg,rgba(201,160,80,0.3),transparent)] md:block" />
+          <p className="hidden text-sm text-[var(--ink-muted)] md:block">{description}</p>
+        </div>
+        <div className="flex items-center gap-2 self-start rounded-full border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.04)] px-3 py-1 text-[0.68rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
+          <span className="h-2 w-2 rounded-full bg-[var(--gold)] shadow-[0_0_14px_rgba(201,160,80,0.5)]" />
+          {activeLabel}
+        </div>
+      </div>
+
+      <div className="coriolis-quick-nav__rail" aria-label={ariaLabel}>
+        {sections.map((section, index) => {
+          const isActive = section.id === activeSectionId;
+
+          return (
+            <button
+              key={section.id}
+              type="button"
+              className={`coriolis-quick-nav__button ${
+                isActive ? "coriolis-quick-nav__button--active" : ""
+              }`}
+              aria-current={isActive ? "location" : undefined}
+              onClick={() => onJumpToSection(section.id)}
+            >
+              <span className="text-[0.62rem] uppercase tracking-[0.3em] text-[var(--ink-faint)]">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span className="text-sm uppercase tracking-[0.18em] text-[var(--paper)]">
+                {section.label}
+              </span>
+              <span className="text-[0.62rem] uppercase tracking-[0.24em] text-[var(--ink-muted)]">
+                {section.eyebrow}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function describeVariance(actual: number, target: number) {
@@ -211,6 +284,8 @@ export function RosterApp({
   const [activeSectionId, setActiveSectionId] = useState<QuickNavSectionId>(
     allQuickNavSections[0].id,
   );
+  const [activeTeamSectionId, setActiveTeamSectionId] =
+    useState<TeamQuickNavSectionId>(teamQuickNavSections[0].id);
   const [isPending, startTransition] = useTransition();
   const [isUploading, setIsUploading] = useState(false);
 
@@ -251,6 +326,14 @@ export function RosterApp({
   useEffect(() => {
     setActiveSectionId(allQuickNavSections[0].id);
   }, [selectedCharacterId]);
+
+  useEffect(() => {
+    if (!isTeamSelected) {
+      return;
+    }
+
+    setActiveTeamSectionId(teamQuickNavSections[0].id);
+  }, [isTeamSelected, team.id]);
 
   useEffect(() => {
     if (!isStarterRulesHidden || activeSectionId !== "starter-rules") {
@@ -309,6 +392,52 @@ export function RosterApp({
 
     return () => observer.disconnect();
   }, [isStarterRulesHidden, selectedCharacterId]);
+
+  useEffect(() => {
+    if (!isTeamSelected) {
+      return;
+    }
+
+    const sectionNodes = teamQuickNavSections
+      .map((section) => document.getElementById(section.id))
+      .filter((section): section is HTMLElement => section instanceof HTMLElement);
+
+    if (sectionNodes.length === 0) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visibleEntries = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((entryA, entryB) => {
+            const guideLine = window.innerHeight * 0.34;
+            const distanceA = Math.abs(entryA.boundingClientRect.top - guideLine);
+            const distanceB = Math.abs(entryB.boundingClientRect.top - guideLine);
+
+            if (distanceA !== distanceB) {
+              return distanceA - distanceB;
+            }
+
+            return entryA.boundingClientRect.top - entryB.boundingClientRect.top;
+          });
+
+        const nextSection = visibleEntries[0]?.target.id as TeamQuickNavSectionId | undefined;
+
+        if (nextSection) {
+          setActiveTeamSectionId(nextSection);
+        }
+      },
+      {
+        rootMargin: "-24% 0px -58% 0px",
+        threshold: [0.18, 0.3, 0.45, 0.62],
+      },
+    );
+
+    sectionNodes.forEach((section) => observer.observe(section));
+
+    return () => observer.disconnect();
+  }, [isTeamSelected, team.id]);
 
   function patchCharacter(updatedCharacter: CharacterRecord) {
     setCharacters((currentCharacters) => {
@@ -531,6 +660,9 @@ export function RosterApp({
       : [];
   const activeNavSection =
     quickNavSections.find((section) => section.id === activeSectionId) ?? quickNavSections[0];
+  const activeTeamNavSection =
+    teamQuickNavSections.find((section) => section.id === activeTeamSectionId) ??
+    teamQuickNavSections[0];
 
   function jumpToSection(sectionId: QuickNavSectionId) {
     const section = document.getElementById(sectionId);
@@ -540,6 +672,17 @@ export function RosterApp({
     }
 
     setActiveSectionId(sectionId);
+    section.scrollIntoView({ behavior: "auto", block: "start" });
+  }
+
+  function jumpToTeamSection(sectionId: TeamQuickNavSectionId) {
+    const section = document.getElementById(sectionId);
+
+    if (!section) {
+      return;
+    }
+
+    setActiveTeamSectionId(sectionId);
     section.scrollIntoView({ behavior: "auto", block: "start" });
   }
 
@@ -706,51 +849,25 @@ export function RosterApp({
             </div>
 
             {selectedCharacter ? (
-              <div className="coriolis-quick-nav">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div className="flex items-center gap-3">
-                    <p className="text-[0.68rem] uppercase tracking-[0.36em] text-[var(--ink-faint)]">
-                      Quick Nav
-                    </p>
-                    <div className="hidden h-px w-20 bg-[linear-gradient(90deg,rgba(201,160,80,0.3),transparent)] md:block" />
-                    <p className="hidden text-sm text-[var(--ink-muted)] md:block">
-                      Jump straight to the part of the dossier you need.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 self-start rounded-full border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.04)] px-3 py-1 text-[0.68rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
-                    <span className="h-2 w-2 rounded-full bg-[var(--gold)] shadow-[0_0_14px_rgba(201,160,80,0.5)]" />
-                    {activeNavSection.label}
-                  </div>
-                </div>
+              <HeaderQuickNav
+                activeLabel={activeNavSection.label}
+                activeSectionId={activeSectionId}
+                ariaLabel="Quick navigation"
+                description="Jump straight to the part of the dossier you need."
+                onJumpToSection={jumpToSection}
+                sections={quickNavSections}
+              />
+            ) : null}
 
-                <div className="coriolis-quick-nav__rail" aria-label="Quick navigation">
-                  {quickNavSections.map((section, index) => {
-                    const isActive = section.id === activeSectionId;
-
-                    return (
-                      <button
-                        key={section.id}
-                        type="button"
-                        className={`coriolis-quick-nav__button ${
-                          isActive ? "coriolis-quick-nav__button--active" : ""
-                        }`}
-                        aria-current={isActive ? "location" : undefined}
-                        onClick={() => jumpToSection(section.id)}
-                      >
-                        <span className="text-[0.62rem] uppercase tracking-[0.3em] text-[var(--ink-faint)]">
-                          {String(index + 1).padStart(2, "0")}
-                        </span>
-                        <span className="text-sm uppercase tracking-[0.18em] text-[var(--paper)]">
-                          {section.label}
-                        </span>
-                        <span className="text-[0.62rem] uppercase tracking-[0.24em] text-[var(--ink-muted)]">
-                          {section.eyebrow}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+            {isTeamSelected ? (
+              <HeaderQuickNav
+                activeLabel={activeTeamNavSection.label}
+                activeSectionId={activeTeamSectionId}
+                ariaLabel="Quick navigation"
+                description="Jump straight to the part of the crew dossier you need."
+                onJumpToSection={jumpToTeamSection}
+                sections={teamQuickNavSections}
+              />
             ) : null}
           </div>
         </header>
