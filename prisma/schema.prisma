@@ -14,11 +14,34 @@ enum TalentSource {
   other
 }
 
+enum OriginCulture {
+  firstcome
+  zenithian
+}
+
+enum OriginSystem {
+  algol
+  mira
+  kua
+  dabaran
+  zalos
+  other
+}
+
+enum Upbringing {
+  plebeian
+  stationary
+  privileged
+}
+
 model Character {
   id                String                  @id @default(cuid())
   name              String
   description       String                  @default("")
   background        String                  @default("")
+  originCulture     OriginCulture?
+  originSystem      OriginSystem?
+  upbringing        Upbringing?
   concept           String                  @default("")
   groupConcept      String                  @default("")
   icon              String                  @default("")

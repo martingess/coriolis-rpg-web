@@ -53,8 +53,11 @@ export async function updateCharacterFieldAction(input: {
 export async function createRepeaterItemAction(input: {
   characterId: string;
   kind: Extract<RepeaterKind, "relationship" | "talent" | "contact">;
+  relationshipTargetName?: string;
 }) {
-  const character = await createRepeaterItem(input.characterId, input.kind);
+  const character = await createRepeaterItem(input.characterId, input.kind, {
+    relationshipTargetName: input.relationshipTargetName,
+  });
   revalidatePath("/");
   return character;
 }

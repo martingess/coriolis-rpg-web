@@ -153,6 +153,8 @@ type SelectOption = {
 
 type SavableSelectFieldProps = {
   className?: string;
+  disabled?: boolean;
+  hint?: string;
   label: string;
   onCommit: CommitHandler<string>;
   options: SelectOption[];
@@ -161,6 +163,8 @@ type SavableSelectFieldProps = {
 
 export function SavableSelectField({
   className,
+  disabled = false,
+  hint,
   label,
   onCommit,
   options,
@@ -173,9 +177,10 @@ export function SavableSelectField({
   }, [value]);
 
   return (
-    <FieldShell label={label} className={className}>
+    <FieldShell label={label} hint={hint} className={className}>
       <select
         className="coriolis-select"
+        disabled={disabled}
         value={draft}
         onChange={(event) => {
           const nextValue = event.target.value;
@@ -243,6 +248,7 @@ type SectionCardProps = {
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
+  id?: string;
   eyebrow?: string;
   title: string;
 };
@@ -251,12 +257,14 @@ export function SectionCard({
   actions,
   children,
   className = "",
+  id,
   eyebrow,
   title,
 }: SectionCardProps) {
   return (
     <section
-      className={`coriolis-panel relative overflow-hidden rounded-[1.75rem] border border-[var(--line-strong)] p-4 md:p-5 ${className}`}
+      id={id}
+      className={`coriolis-panel relative overflow-hidden rounded-[1.75rem] border border-[var(--line-strong)] p-4 scroll-mt-[20rem] md:p-5 md:scroll-mt-[18rem] lg:scroll-mt-[16rem] ${className}`}
     >
       <div className="mb-4 flex items-start justify-between gap-4">
         <div className="space-y-1">

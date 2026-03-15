@@ -1,4 +1,17 @@
 export type TalentSource = "group" | "concept" | "icon" | "other";
+export const originCultureValues = ["firstcome", "zenithian"] as const;
+export const originSystemValues = [
+  "algol",
+  "mira",
+  "kua",
+  "dabaran",
+  "zalos",
+  "other",
+] as const;
+export const upbringingValues = ["plebeian", "stationary", "privileged"] as const;
+export type OriginCulture = (typeof originCultureValues)[number];
+export type OriginSystem = (typeof originSystemValues)[number];
+export type Upbringing = (typeof upbringingValues)[number];
 export type InventoryKind = "weapon" | "gear" | "tiny";
 export type RepeaterKind =
   | "relationship"
@@ -61,6 +74,9 @@ export type CharacterRecord = {
   name: string;
   description: string;
   background: string;
+  originCulture: OriginCulture | null;
+  originSystem: OriginSystem | null;
+  upbringing: Upbringing | null;
   concept: string;
   groupConcept: string;
   icon: string;
@@ -141,6 +157,9 @@ export type CharacterScalarField =
   | "name"
   | "description"
   | "background"
+  | "originCulture"
+  | "originSystem"
+  | "upbringing"
   | "concept"
   | "groupConcept"
   | "icon"

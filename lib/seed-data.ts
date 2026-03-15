@@ -1,16 +1,22 @@
 import type {
   CharacterContactRecord,
   CharacterGearItemRecord,
+  OriginCulture,
+  OriginSystem,
   CharacterRelationshipRecord,
   CharacterTalentRecord,
   CharacterWeaponRecord,
   TalentSource,
+  Upbringing,
 } from "@/lib/roster-types";
 
 type SeedCharacter = {
   name: string;
   description: string;
   background: string;
+  originCulture: OriginCulture | null;
+  originSystem: OriginSystem | null;
+  upbringing: Upbringing | null;
   concept: string;
   groupConcept: string;
   icon: string;
@@ -68,6 +74,9 @@ export const seededCharacters: SeedCharacter[] = [
     description:
       "A sharp-eyed prospector who treats the void like a map of unfinished promises.",
     background: "Firstcome Stationary from Kua",
+    originCulture: "firstcome",
+    originSystem: "kua",
+    upbringing: "stationary",
     concept: "Trailblazer / Prospector",
     groupConcept: "Explorers",
     icon: "The Traveler",
@@ -214,6 +223,9 @@ export const seededCharacters: SeedCharacter[] = [
     description:
       "A velvet-voiced correspondent who can turn a station rumor into leverage before the tea cools.",
     background: "Zenithian Privileged from Coriolis",
+    originCulture: "zenithian",
+    originSystem: "kua",
+    upbringing: "privileged",
     concept: "Data Spider / Correspondent",
     groupConcept: "Agents",
     icon: "The Messenger",

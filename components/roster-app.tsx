@@ -21,17 +21,28 @@ import {
   SectionCard,
 } from "@/components/field-controls";
 import {
+  calculateStarterGuidance,
   formatEncumbranceUnits,
   getEncumbranceCapacityUnits,
   getEncumbranceUsedUnits,
+  starterGuidanceHints,
+  starterGuidanceLabels,
 } from "@/lib/coriolis-rules";
+import {
+  originCultureValues,
+  originSystemValues,
+  upbringingValues,
+} from "@/lib/roster-types";
 import type {
   CharacterRecord,
   CharacterScalarField,
   CharacterWeaponRecord,
   InventoryKind,
   InventoryPreset,
+  OriginCulture,
+  OriginSystem,
   RepeaterKind,
+  Upbringing,
 } from "@/lib/roster-types";
 
 type RosterAppProps = {
@@ -79,19 +90,107 @@ const talentSourceOptions = [
   { value: "other", label: "Other" },
 ];
 
+const originCultureLabels: Record<OriginCulture, string> = {
+  firstcome: "Firstcome",
+  zenithian: "Zenithian",
+};
+
+const originSystemLabels: Record<OriginSystem, string> = {
+  algol: "Algol",
+  mira: "Mira",
+  kua: "Kua",
+  dabaran: "Dabaran",
+  zalos: "Zalos",
+  other: "Other",
+};
+
+const upbringingLabels: Record<Upbringing, string> = {
+  plebeian: "Plebeian",
+  stationary: "Stationary",
+  privileged: "Privileged",
+};
+
+const originCultureOptions = [
+  { value: "", label: "Choose origin culture" },
+  ...originCultureValues.map((value) => ({
+    value,
+    label: originCultureLabels[value],
+  })),
+];
+
+const originSystemOptions = [
+  { value: "", label: "Choose home system" },
+  ...originSystemValues.map((value) => ({
+    value,
+    label: originSystemLabels[value],
+  })),
+];
+
+const upbringingOptions = [
+  { value: "", label: "Choose upbringing" },
+  ...upbringingValues.map((value) => ({
+    value,
+    label: upbringingLabels[value],
+  })),
+];
+
 const encumbrancePresets = [
   { value: "0", label: "Tiny" },
   { value: "1", label: "Light" },
   { value: "2", label: "Normal" },
   { value: "4", label: "Heavy" },
+  { value: "6", label: "3 rows" },
+  { value: "8", label: "4 rows" },
+  { value: "10", label: "5 rows" },
+  { value: "12", label: "6 rows" },
 ];
+
+const allQuickNavSections = [
+  { id: "identity", label: "Identity", eyebrow: "Front Sheet" },
+  { id: "appearance", label: "Appearance", eyebrow: "Presence" },
+  { id: "conditions", label: "Conditions", eyebrow: "Trauma" },
+  { id: "attributes", label: "Attributes", eyebrow: "Primary Stats" },
+  { id: "starter-rules", label: "Starter Rules", eyebrow: "Chapter 2 Guide" },
+  { id: "relationships", label: "Relationships", eyebrow: "Other PCs" },
+  { id: "skills", label: "Skills", eyebrow: "General & Advanced" },
+  { id: "talents", label: "Talents", eyebrow: "Edge" },
+  { id: "armor", label: "Armor", eyebrow: "Protection" },
+  { id: "weapons", label: "Weapons", eyebrow: "Loadout" },
+  { id: "gear", label: "Gear", eyebrow: "Encumbrance" },
+  { id: "tiny-items", label: "Tiny Items", eyebrow: "Pocket Rituals" },
+  { id: "people-ive-met", label: "Contacts", eyebrow: "People I've Met" },
+  { id: "my-cabin", label: "My Cabin", eyebrow: "Private Space" },
+  { id: "notes", label: "Notes", eyebrow: "Back Sheet" },
+] as const;
+
+type QuickNavSectionId = (typeof allQuickNavSections)[number]["id"];
+
+const birrFormatter = new Intl.NumberFormat("en-US");
+
+function formatBirr(value: number) {
+  return `${birrFormatter.format(value)} birr`;
+}
+
+function describeVariance(actual: number, target: number) {
+  if (actual === target) {
+    return "Aligned with the starter target.";
+  }
+
+  const delta = Math.abs(actual - target);
+
+  return actual > target ? `${delta} above target.` : `${delta} below target.`;
+}
 
 export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProps) {
   const [characters, setCharacters] = useState(initialCharacters);
   const [selectedId, setSelectedId] = useState(initialCharacters[0]?.id ?? null);
   const [drawerKind, setDrawerKind] = useState<InventoryKind | null>(null);
   const [notice, setNotice] = useState<string | null>(
-    "Autosaves on blur. Chapter 2 starter gear is ready in the catalog drawer.",
+    "Autosaves on blur. The Chapter 2 starter-gear catalog is complete and rulebook-aligned.",
+  );
+  const [isStarterRulesHidden, setIsStarterRulesHidden] = useState(false);
+  const [activeSectionId, setActiveSectionId] = useState<QuickNavSectionId>(
+    allQuickNavSections[0].id,
   );
   const [isPending, startTransition] = useTransition();
   const [isUploading, setIsUploading] = useState(false);
@@ -100,12 +199,90 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
     characters.find((character) => character.id === selectedId) ??
     characters[0] ??
     null;
+  const selectedCharacterId = selectedCharacter?.id ?? null;
+  const quickNavSections = isStarterRulesHidden
+    ? allQuickNavSections.filter((section) => section.id !== "starter-rules")
+    : allQuickNavSections;
+  const otherCharacters = selectedCharacter
+    ? characters.filter((character) => character.id !== selectedCharacter.id)
+    : [];
+  const otherCharacterNames = otherCharacters.map((character) => character.name);
+  const unassignedRelationshipNames = selectedCharacter
+    ? otherCharacterNames.filter(
+        (name) =>
+          !selectedCharacter.relationships.some(
+            (relationship) => relationship.targetName === name,
+          ),
+      )
+    : [];
 
   useEffect(() => {
     if (!selectedCharacter && characters[0]) {
       setSelectedId(characters[0].id);
     }
   }, [characters, selectedCharacter]);
+
+  useEffect(() => {
+    setActiveSectionId(allQuickNavSections[0].id);
+  }, [selectedCharacterId]);
+
+  useEffect(() => {
+    if (!isStarterRulesHidden || activeSectionId !== "starter-rules") {
+      return;
+    }
+
+    setActiveSectionId("relationships");
+  }, [activeSectionId, isStarterRulesHidden]);
+
+  useEffect(() => {
+    if (!selectedCharacterId) {
+      return;
+    }
+
+    const sectionNodes = (
+      isStarterRulesHidden
+        ? allQuickNavSections.filter((section) => section.id !== "starter-rules")
+        : allQuickNavSections
+    )
+      .map((section) => document.getElementById(section.id))
+      .filter((section): section is HTMLElement => section instanceof HTMLElement);
+
+    if (sectionNodes.length === 0) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visibleEntries = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((entryA, entryB) => {
+            const guideLine = window.innerHeight * 0.34;
+            const distanceA = Math.abs(entryA.boundingClientRect.top - guideLine);
+            const distanceB = Math.abs(entryB.boundingClientRect.top - guideLine);
+
+            if (distanceA !== distanceB) {
+              return distanceA - distanceB;
+            }
+
+            return entryA.boundingClientRect.top - entryB.boundingClientRect.top;
+          });
+
+        const nextSection = visibleEntries[0]?.target.id as QuickNavSectionId | undefined;
+
+        if (nextSection) {
+          setActiveSectionId(nextSection);
+        }
+      },
+      {
+        rootMargin: "-24% 0px -58% 0px",
+        threshold: [0.18, 0.3, 0.45, 0.62],
+      },
+    );
+
+    sectionNodes.forEach((section) => observer.observe(section));
+
+    return () => observer.disconnect();
+  }, [isStarterRulesHidden, selectedCharacterId]);
 
   function patchCharacter(updatedCharacter: CharacterRecord) {
     setCharacters((currentCharacters) =>
@@ -200,6 +377,94 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
   const encumbranceCapacity = selectedCharacter
     ? getEncumbranceCapacityUnits(selectedCharacter.strength)
     : 0;
+  const starterGuidance = selectedCharacter
+    ? calculateStarterGuidance(selectedCharacter)
+    : null;
+  const selectedUpbringingLabel =
+    starterGuidance?.selectedUpbringing
+      ? upbringingLabels[starterGuidance.selectedUpbringing]
+      : null;
+  const starterGuidanceRows =
+    starterGuidance?.target
+      ? [
+          {
+            key: "attributePoints",
+            label: starterGuidanceLabels.attributePoints,
+            actual: starterGuidance.actual.attributePoints,
+            target: starterGuidance.target.attributePoints,
+          },
+          {
+            key: "skillPoints",
+            label: starterGuidanceLabels.skillPoints,
+            actual: starterGuidance.actual.skillPoints,
+            target: starterGuidance.target.skillPoints,
+          },
+          {
+            key: "groupTalents",
+            label: starterGuidanceLabels.groupTalents,
+            actual: starterGuidance.actual.groupTalents,
+            target: starterGuidance.target.groupTalents,
+          },
+          {
+            key: "conceptTalents",
+            label: starterGuidanceLabels.conceptTalents,
+            actual: starterGuidance.actual.conceptTalents,
+            target: starterGuidance.target.conceptTalents,
+          },
+          {
+            key: "iconTalents",
+            label: starterGuidanceLabels.iconTalents,
+            actual: starterGuidance.actual.iconTalents,
+            target: starterGuidance.target.iconTalents,
+          },
+          {
+            key: "totalTalents",
+            label: starterGuidanceLabels.totalTalents,
+            actual: starterGuidance.actual.totalTalents,
+            target: starterGuidance.target.totalTalents,
+          },
+          {
+            key: "baseReputation",
+            label: starterGuidanceLabels.baseReputation,
+            actual: starterGuidance.actual.reputation,
+            target: starterGuidance.target.baseReputation,
+            hint: starterGuidanceHints.baseReputation,
+          },
+          {
+            key: "startingCapital",
+            label: starterGuidanceLabels.startingCapital,
+            actual: starterGuidance.actual.startingCapital,
+            target: starterGuidance.target.startingCapital,
+            formatValue: formatBirr,
+          },
+        ]
+      : [];
+  const activeNavSection =
+    quickNavSections.find((section) => section.id === activeSectionId) ?? quickNavSections[0];
+
+  function jumpToSection(sectionId: QuickNavSectionId) {
+    const section = document.getElementById(sectionId);
+
+    if (!section) {
+      return;
+    }
+
+    setActiveSectionId(sectionId);
+    section.scrollIntoView({ behavior: "auto", block: "start" });
+  }
+
+  function hideStarterRules() {
+    setIsStarterRulesHidden(true);
+    if (activeSectionId === "starter-rules") {
+      setActiveSectionId("relationships");
+    }
+    setNotice("Starter rules hidden. Use Show Starter Rules to bring the guide back.");
+  }
+
+  function showStarterRules() {
+    setIsStarterRulesHidden(false);
+    setNotice("Starter rules guide restored.");
+  }
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-[var(--night)] text-[var(--ink)]">
@@ -249,11 +514,27 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
                     }
 
                     runTask(async () => {
+                      const previousName = selectedCharacter.name;
                       const updated = await renameCharacterAction({
                         characterId: selectedCharacter.id,
                         name: nextName,
                       });
-                      patchCharacter(updated);
+                      setCharacters((currentCharacters) =>
+                        currentCharacters.map((character) => {
+                          if (character.id === updated.id) {
+                            return updated;
+                          }
+
+                          return {
+                            ...character,
+                            relationships: character.relationships.map((relationship) =>
+                              relationship.targetName === previousName
+                                ? { ...relationship, targetName: updated.name }
+                                : relationship,
+                            ),
+                          };
+                        }),
+                      );
                     }, "Sheet renamed.");
                   }}
                 >
@@ -285,6 +566,15 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
                 >
                   Delete
                 </button>
+                {isStarterRulesHidden ? (
+                  <button
+                    type="button"
+                    className="coriolis-chip"
+                    onClick={showStarterRules}
+                  >
+                    Show Starter Rules
+                  </button>
+                ) : null}
               </div>
             </div>
 
@@ -313,20 +603,64 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
               <p>{notice}</p>
               <p>{isPending || isUploading ? "Synchronizing with the ship ledger..." : "Ready"}</p>
             </div>
+
+            {selectedCharacter ? (
+              <div className="coriolis-quick-nav">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="flex items-center gap-3">
+                    <p className="text-[0.68rem] uppercase tracking-[0.36em] text-[var(--ink-faint)]">
+                      Quick Nav
+                    </p>
+                    <div className="hidden h-px w-20 bg-[linear-gradient(90deg,rgba(201,160,80,0.3),transparent)] md:block" />
+                    <p className="hidden text-sm text-[var(--ink-muted)] md:block">
+                      Jump straight to the part of the dossier you need.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 self-start rounded-full border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.04)] px-3 py-1 text-[0.68rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
+                    <span className="h-2 w-2 rounded-full bg-[var(--gold)] shadow-[0_0_14px_rgba(201,160,80,0.5)]" />
+                    {activeNavSection.label}
+                  </div>
+                </div>
+
+                <div className="coriolis-quick-nav__rail" aria-label="Quick navigation">
+                  {quickNavSections.map((section, index) => {
+                    const isActive = section.id === activeSectionId;
+
+                    return (
+                      <button
+                        key={section.id}
+                        type="button"
+                        className={`coriolis-quick-nav__button ${
+                          isActive ? "coriolis-quick-nav__button--active" : ""
+                        }`}
+                        aria-current={isActive ? "location" : undefined}
+                        onClick={() => jumpToSection(section.id)}
+                      >
+                        <span className="text-[0.62rem] uppercase tracking-[0.3em] text-[var(--ink-faint)]">
+                          {String(index + 1).padStart(2, "0")}
+                        </span>
+                        <span className="text-sm uppercase tracking-[0.18em] text-[var(--paper)]">
+                          {section.label}
+                        </span>
+                        <span className="text-[0.62rem] uppercase tracking-[0.24em] text-[var(--ink-muted)]">
+                          {section.eyebrow}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </div>
         </header>
 
         {selectedCharacter ? (
           <main className="grid gap-4 lg:grid-cols-2 xl:gap-5">
             <SectionCard
+              id="identity"
               title="Identity"
               eyebrow="Front Sheet"
               className="lg:col-span-2"
-              actions={
-                <div className="rounded-full border border-[var(--line-soft)] px-3 py-1 text-xs uppercase tracking-[0.24em] text-[var(--ink-faint)]">
-                  Mobile first
-                </div>
-              }
             >
               <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
                 <div className="rounded-[1.5rem] border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.05)] p-4">
@@ -398,6 +732,27 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
                     value={selectedCharacter.name}
                     onCommit={(value) => commitField("name", value)}
                   />
+                  <SavableSelectField
+                    label="Origin Culture"
+                    hint="Descriptive in v1. Use this to mark Firstcome or Zenithian roots."
+                    value={selectedCharacter.originCulture ?? ""}
+                    options={originCultureOptions}
+                    onCommit={(value) => commitField("originCulture", value)}
+                  />
+                  <SavableSelectField
+                    label="Home System"
+                    hint="Descriptive in v1. Coriolis-born characters belong to the Kua system."
+                    value={selectedCharacter.originSystem ?? ""}
+                    options={originSystemOptions}
+                    onCommit={(value) => commitField("originSystem", value)}
+                  />
+                  <SavableSelectField
+                    label="Upbringing"
+                    hint="This is the only field that drives starter-budget guidance in v1."
+                    value={selectedCharacter.upbringing ?? ""}
+                    options={upbringingOptions}
+                    onCommit={(value) => commitField("upbringing", value)}
+                  />
                   <SavableTextField
                     label="Background"
                     value={selectedCharacter.background}
@@ -445,7 +800,7 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
               </div>
             </SectionCard>
 
-            <SectionCard title="Appearance" eyebrow="Presence">
+            <SectionCard id="appearance" title="Appearance" eyebrow="Presence">
               <div className="grid gap-4">
                 <SavableTextField
                   label="Face"
@@ -464,7 +819,7 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
               </div>
             </SectionCard>
 
-            <SectionCard title="Conditions" eyebrow="Trauma">
+            <SectionCard id="conditions" title="Conditions" eyebrow="Trauma">
               <div className="grid gap-4">
                 <CounterTrack
                   label={`Hit Points (max ${selectedCharacter.maxHitPoints})`}
@@ -484,9 +839,10 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
                   value={selectedCharacter.radiation}
                   onCommit={(value) => commitField("radiation", value)}
                 />
-                <CounterTrack
+                <SavableNumberField
                   label="Experience"
-                  max={10}
+                  min={0}
+                  hint="Bank XP freely. Every 5 XP can become a new talent or skill advance."
                   value={selectedCharacter.experience}
                   onCommit={(value) => commitField("experience", value)}
                 />
@@ -500,7 +856,7 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
               </div>
             </SectionCard>
 
-            <SectionCard title="Attributes" eyebrow="Primary Stats">
+            <SectionCard id="attributes" title="Attributes" eyebrow="Primary Stats">
               <div className="grid gap-4 sm:grid-cols-2">
                 {attributeFields.map((attribute) => (
                   <SavableNumberField
@@ -516,18 +872,117 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
               </div>
             </SectionCard>
 
+            {!isStarterRulesHidden ? (
+              <SectionCard
+                id="starter-rules"
+                title="Starter Rules"
+                eyebrow="Chapter 2 Guide"
+                actions={
+                  <button
+                    type="button"
+                    className="coriolis-chip"
+                    onClick={hideStarterRules}
+                  >
+                    Hide
+                  </button>
+                }
+              >
+                {!starterGuidance?.target ? (
+                  <div className="rounded-[1.35rem] border border-dashed border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.04)] px-4 py-5">
+                    <p className="font-display text-lg uppercase tracking-[0.14em] text-[var(--paper)]">
+                      Guidance inactive
+                    </p>
+                    <p className="mt-2 text-sm text-[var(--ink-muted)]">
+                      {starterGuidanceHints.emptyState}
+                    </p>
+                    <p className="mt-3 text-xs uppercase tracking-[0.2em] text-[var(--ink-faint)]">
+                      Origin fields stay descriptive in v1. Upbringing alone sets the starter
+                      bundle.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid gap-4">
+                    <div className="rounded-[1.35rem] border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.05)] px-4 py-4">
+                      <p className="font-display text-lg uppercase tracking-[0.14em] text-[var(--paper)]">
+                        {selectedUpbringingLabel} starter bundle
+                      </p>
+                      <p className="mt-2 text-sm text-[var(--ink-muted)]">
+                        This guide compares the current sheet against the rulebook starting values.
+                        It never blocks manual edits.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-3">
+                      {starterGuidanceRows.map((row) => {
+                        const isAligned = row.actual === row.target;
+                        const isAboveTarget = row.actual > row.target;
+                        const rowClassName = isAligned
+                          ? "border-[var(--line-soft)] bg-[var(--panel-soft)]"
+                          : isAboveTarget
+                            ? "border-[color:rgba(255,118,88,0.3)] bg-[color:rgba(255,118,88,0.08)]"
+                            : "border-[color:rgba(201,160,80,0.3)] bg-[color:rgba(201,160,80,0.08)]";
+                        const formatValue = row.formatValue ?? ((value: number) => String(value));
+
+                        return (
+                          <div
+                            key={row.key}
+                            className={`rounded-[1.2rem] border px-4 py-4 ${rowClassName}`}
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div>
+                                <p className="text-[0.74rem] uppercase tracking-[0.26em] text-[var(--ink-faint)]">
+                                  {row.label}
+                                </p>
+                                <p className="mt-1 text-sm text-[var(--ink-muted)]">
+                                  {describeVariance(row.actual, row.target)}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-display text-xl uppercase tracking-[0.12em] text-[var(--paper)]">
+                                  {formatValue(row.actual)}
+                                </p>
+                                <p className="text-xs uppercase tracking-[0.22em] text-[var(--ink-faint)]">
+                                  target {formatValue(row.target)}
+                                </p>
+                              </div>
+                            </div>
+                            {row.hint ? (
+                              <p className="mt-3 text-xs text-[var(--ink-muted)]">{row.hint}</p>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {starterGuidance.actual.otherTalents > 0 ? (
+                      <p className="rounded-[1.1rem] border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.04)] px-4 py-3 text-sm text-[var(--ink-muted)]">
+                        {starterGuidanceHints.otherTalents}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+              </SectionCard>
+            ) : null}
+
             <SectionCard
+              id="relationships"
               title="Relationships"
-              eyebrow="Buddy System"
+              eyebrow="Other PCs"
               actions={
                 <button
                   type="button"
                   className="coriolis-chip"
+                  disabled={!selectedCharacter || unassignedRelationshipNames.length === 0}
                   onClick={() => {
+                    if (!selectedCharacter || unassignedRelationshipNames.length === 0) {
+                      return;
+                    }
+
                     runTask(async () => {
                       const updated = await createRepeaterItemAction({
                         characterId: selectedCharacter.id,
                         kind: "relationship",
+                        relationshipTargetName: unassignedRelationshipNames[0],
                       });
                       patchCharacter(updated);
                     }, "Relationship row added.");
@@ -540,7 +995,9 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
               <div className="grid gap-4">
                 {selectedCharacter.relationships.length === 0 ? (
                   <p className="rounded-[1.2rem] border border-dashed border-[var(--line-soft)] px-4 py-5 text-sm text-[var(--ink-muted)]">
-                    No linked crew yet. Add a row for each ally, rival, or station ghost.
+                    {otherCharacterNames.length === 0
+                      ? "Add another sheet to the roster before defining crew relationships."
+                      : "Add one row for each of the other current sheets in your crew."}
                   </p>
                 ) : null}
                 {selectedCharacter.relationships.map((relationship) => (
@@ -548,6 +1005,44 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
                     key={relationship.id}
                     className="rounded-[1.35rem] border border-[var(--line-soft)] bg-[var(--panel-soft)] p-4"
                   >
+                    {(() => {
+                      const isCurrentTargetValid = otherCharacterNames.includes(
+                        relationship.targetName,
+                      );
+                      const relationshipTargetOptions = [
+                        {
+                          value: "",
+                          label:
+                            otherCharacterNames.length === 0
+                              ? "No other sheets in the roster"
+                              : "Choose another sheet",
+                        },
+                        ...(!isCurrentTargetValid && relationship.targetName
+                          ? [
+                              {
+                                value: relationship.targetName,
+                                label: `Missing sheet: ${relationship.targetName}`,
+                              },
+                            ]
+                          : []),
+                        ...otherCharacterNames
+                          .filter(
+                            (name) =>
+                              name === relationship.targetName ||
+                              !selectedCharacter.relationships.some(
+                                (otherRelationship) =>
+                                  otherRelationship.id !== relationship.id &&
+                                  otherRelationship.targetName === name,
+                              ),
+                          )
+                          .map((name) => ({
+                            value: name,
+                            label: name,
+                          })),
+                      ];
+
+                      return (
+                        <>
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <button
                         type="button"
@@ -556,6 +1051,7 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
                             ? "border-[var(--gold)] bg-[color:rgba(201,160,80,0.18)] text-[var(--paper)]"
                             : "border-[var(--line-soft)] text-[var(--ink-faint)]"
                         }`}
+                        disabled={!isCurrentTargetValid}
                         onClick={() => {
                           runTask(async () => {
                             const updated = await setBuddyAction({
@@ -585,9 +1081,15 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
                       </button>
                     </div>
                     <div className="grid gap-4">
-                      <SavableTextField
-                        label="PC / Contact"
+                      <SavableSelectField
+                        label="Other PC"
+                        hint={
+                          isCurrentTargetValid
+                            ? "Relationships and buddies are always tied to other active sheets."
+                            : "This row points to a sheet that no longer exists. Reassign it."
+                        }
                         value={relationship.targetName}
+                        options={relationshipTargetOptions}
                         onCommit={(value) =>
                           commitRepeater("relationship", relationship.id, "targetName", value)
                         }
@@ -602,12 +1104,20 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
                         }
                       />
                     </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
             </SectionCard>
 
-            <SectionCard title="Skills" eyebrow="General & Advanced" className="lg:col-span-2">
+            <SectionCard
+              id="skills"
+              title="Skills"
+              eyebrow="General & Advanced"
+              className="lg:col-span-2"
+            >
               <div className="grid gap-5 lg:grid-cols-2">
                 <div className="grid gap-4 sm:grid-cols-2">
                   {generalSkills.map((skill) => (
@@ -637,6 +1147,7 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
             </SectionCard>
 
             <SectionCard
+              id="talents"
               title="Talents"
               eyebrow="Edge"
               actions={
@@ -712,7 +1223,7 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
               </div>
             </SectionCard>
 
-            <SectionCard title="Armor" eyebrow="Protection">
+            <SectionCard id="armor" title="Armor" eyebrow="Protection">
               <div className="grid gap-4 sm:grid-cols-2">
                 <SavableTextField
                   label="Armor"
@@ -738,6 +1249,7 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
             </SectionCard>
 
             <SectionCard
+              id="weapons"
               title="Weapons"
               eyebrow="Loadout"
               className="lg:col-span-2"
@@ -777,6 +1289,7 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
             </SectionCard>
 
             <SectionCard
+              id="gear"
               title="Gear"
               eyebrow="Encumbrance"
               actions={
@@ -868,6 +1381,7 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
             </SectionCard>
 
             <SectionCard
+              id="tiny-items"
               title="Tiny Items"
               eyebrow="Pocket Rituals"
               actions={
@@ -935,6 +1449,7 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
             </SectionCard>
 
             <SectionCard
+              id="people-ive-met"
               title="People I've Met"
               eyebrow="Contacts"
               className="lg:col-span-2"
@@ -1010,7 +1525,7 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
               </div>
             </SectionCard>
 
-            <SectionCard title="My Cabin" eyebrow="Private Space">
+            <SectionCard id="my-cabin" title="My Cabin" eyebrow="Private Space">
               <div className="grid gap-4">
                 <SavableTextField
                   label="Description"
@@ -1036,7 +1551,7 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
               </div>
             </SectionCard>
 
-            <SectionCard title="Notes" eyebrow="Back Sheet">
+            <SectionCard id="notes" title="Notes" eyebrow="Back Sheet">
               <div className="grid gap-4">
                 <SavableNumberField
                   label="Birr"

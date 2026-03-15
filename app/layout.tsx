@@ -15,7 +15,7 @@ const marcellus = Marcellus_SC({
 
 export const metadata: Metadata = {
   title: "Coriolis Character Dossier",
-  description: "Interactive mobile-first character roster for Coriolis.",
+  description: "Interactive character roster for Coriolis.",
 };
 
 export default function RootLayout({

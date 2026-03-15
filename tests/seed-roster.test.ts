@@ -1,57 +1,10 @@
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-
-import { PrismaClient } from "@prisma/client";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { getRoster, seedRosterIfEmpty } from "@/lib/roster";
-
-const temporaryDirectories: string[] = [];
-
-function createTestClient() {
-  const directory = mkdtempSync(join(tmpdir(), "coriolis-roster-"));
-  const databasePath = join(directory, "test.db");
-  const databaseUrl = `file:${databasePath}`;
-  const schemaPath = resolve(process.cwd(), "prisma/schema.prisma");
-  const sql = execFileSync(
-    "pnpm",
-    ["exec", "prisma", "migrate", "diff", "--from-empty", "--to-schema-datamodel", schemaPath, "--script"],
-    {
-      cwd: process.cwd(),
-      encoding: "utf8",
-    },
-  );
-
-  execFileSync(
-    "pnpm",
-    ["exec", "prisma", "db", "execute", "--stdin", "--url", databaseUrl],
-    {
-      cwd: process.cwd(),
-      encoding: "utf8",
-      input: sql,
-    },
-  );
-
-  temporaryDirectories.push(directory);
-
-  return new PrismaClient({
-    datasources: {
-      db: {
-        url: databaseUrl,
-      },
-    },
-  });
-}
+import { cleanupTestDatabases, createTestClient } from "@/tests/test-db";
 
 afterEach(() => {
-  while (temporaryDirectories.length > 0) {
-    const directory = temporaryDirectories.pop();
-    if (directory) {
-      rmSync(directory, { force: true, recursive: true });
-    }
-  }
+  cleanupTestDatabases();
 });
 
 describe("seeded roster behavior", () => {
@@ -66,6 +19,16 @@ describe("seeded roster behavior", () => {
         "Sabah al-Malik",
         "Nassim Vale",
       ]);
+      expect(firstLoad[0]).toMatchObject({
+        originCulture: "firstcome",
+        originSystem: "kua",
+        upbringing: "stationary",
+      });
+      expect(firstLoad[1]).toMatchObject({
+        originCulture: "zenithian",
+        originSystem: "kua",
+        upbringing: "privileged",
+      });
 
       await seedRosterIfEmpty(client);
       const secondLoad = await getRoster(client);

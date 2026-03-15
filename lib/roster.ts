@@ -1,11 +1,17 @@
-import { TalentSource, type Prisma, type PrismaClient } from "@prisma/client";
+import {
+  TalentSource,
+  type OriginCulture,
+  type OriginSystem,
+  type Upbringing,
+  type Prisma,
+  type PrismaClient,
+} from "@prisma/client";
 
 import {
   applyDerivedStats,
   ATTRIBUTE_MAX,
   ATTRIBUTE_MIN,
   clampNumber,
-  EXPERIENCE_MAX,
   RADIATION_MAX,
   RELOAD_MAX,
   SKILL_MAX,
@@ -13,6 +19,11 @@ import {
 } from "@/lib/coriolis-rules";
 import { inventoryCatalog } from "@/lib/coriolis-presets";
 import { prisma } from "@/lib/prisma";
+import {
+  originCultureValues,
+  originSystemValues,
+  upbringingValues,
+} from "@/lib/roster-types";
 import type {
   CharacterRecord,
   CharacterScalarField,
@@ -99,12 +110,19 @@ const attributeFields = new Set<CharacterScalarField>([
   "empathy",
 ]);
 
+const originCultureFieldValues = new Set<string>(originCultureValues);
+const originSystemFieldValues = new Set<string>(originSystemValues);
+const upbringingFieldValues = new Set<string>(upbringingValues);
+
 function serializeCharacter(character: CharacterWithRelations): CharacterRecord {
   return {
     id: character.id,
     name: character.name,
     description: character.description,
     background: character.background,
+    originCulture: character.originCulture,
+    originSystem: character.originSystem,
+    upbringing: character.upbringing,
     concept: character.concept,
     groupConcept: character.groupConcept,
     icon: character.icon,
@@ -210,6 +228,127 @@ async function getCharacterOrThrow(characterId: string, client: PrismaClient = p
   return character;
 }
 
+async function getOtherCharacterNames(
+  characterId: string,
+  client: PrismaClient = prisma,
+) {
+  const otherCharacters = await client.character.findMany({
+    where: {
+      id: {
+        not: characterId,
+      },
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+    select: {
+      name: true,
+    },
+  });
+
+  return otherCharacters.map((character) => character.name);
+}
+
+async function normalizeRelationshipTargetName(
+  characterId: string,
+  targetName: string,
+  client: PrismaClient = prisma,
+  relationshipIdToIgnore?: string,
+) {
+  const trimmed = targetName.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  const otherCharacterNames = await getOtherCharacterNames(characterId, client);
+
+  if (!otherCharacterNames.includes(trimmed)) {
+    throw new Error("Relationships can only point to other current sheets.");
+  }
+
+  const duplicateRelationship = await client.characterRelationship.findFirst({
+    where: {
+      characterId,
+      targetName: trimmed,
+      ...(relationshipIdToIgnore
+        ? {
+            id: {
+              not: relationshipIdToIgnore,
+            },
+          }
+        : {}),
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (duplicateRelationship) {
+    throw new Error(`${trimmed} already has a relationship row.`);
+  }
+
+  return trimmed;
+}
+
+async function clearInvalidBuddySelections(client: PrismaClient = prisma) {
+  const characters = await client.character.findMany({
+    orderBy: {
+      createdAt: "asc",
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  if (characters.length === 0) {
+    return;
+  }
+
+  const validNamesByCharacterId = new Map(
+    characters.map((character) => [
+      character.id,
+      new Set(
+        characters
+          .filter((candidate) => candidate.id !== character.id)
+          .map((candidate) => candidate.name),
+      ),
+    ]),
+  );
+
+  const buddyRelationships = await client.characterRelationship.findMany({
+    where: {
+      isBuddy: true,
+    },
+    select: {
+      id: true,
+      characterId: true,
+      targetName: true,
+    },
+  });
+
+  const invalidBuddyIds = buddyRelationships
+    .filter((relationship) => {
+      const validTargetNames = validNamesByCharacterId.get(relationship.characterId);
+      return !validTargetNames?.has(relationship.targetName);
+    })
+    .map((relationship) => relationship.id);
+
+  if (invalidBuddyIds.length > 0) {
+    await client.characterRelationship.updateMany({
+      where: {
+        id: {
+          in: invalidBuddyIds,
+        },
+      },
+      data: {
+        isBuddy: false,
+      },
+    });
+  }
+}
+
 async function createSeedCharacter(
   sample: (typeof seededCharacters)[number],
   client: PrismaClient,
@@ -228,6 +367,9 @@ async function createSeedCharacter(
       name: sample.name,
       description: sample.description,
       background: sample.background,
+      originCulture: sample.originCulture,
+      originSystem: sample.originSystem,
+      upbringing: sample.upbringing,
       concept: sample.concept,
       groupConcept: sample.groupConcept,
       icon: sample.icon,
@@ -307,6 +449,7 @@ export async function seedRosterIfEmpty(client: PrismaClient = prisma) {
 
 export async function getRoster(client: PrismaClient = prisma) {
   await seedRosterIfEmpty(client);
+  await clearInvalidBuddySelections(client);
 
   const characters = await client.character.findMany({
     include: characterInclude,
@@ -356,25 +499,70 @@ export async function createCharacter(client: PrismaClient = prisma) {
 
 export async function renameCharacter(characterId: string, name: string, client: PrismaClient = prisma) {
   const trimmed = name.trim();
-  const character = await client.character.update({
+  const existingCharacter = await client.character.findUnique({
     where: {
       id: characterId,
     },
-    data: {
-      name: trimmed.length > 0 ? trimmed : "Unnamed Horizoner",
+    select: {
+      name: true,
     },
-    include: characterInclude,
   });
+
+  if (!existingCharacter) {
+    throw new Error(`Character ${characterId} not found.`);
+  }
+
+  const nextName = trimmed.length > 0 ? trimmed : "Unnamed Horizoner";
+
+  const [, character] = await client.$transaction([
+    client.characterRelationship.updateMany({
+      where: {
+        targetName: existingCharacter.name,
+      },
+      data: {
+        targetName: nextName,
+      },
+    }),
+    client.character.update({
+      where: {
+        id: characterId,
+      },
+      data: {
+        name: nextName,
+      },
+      include: characterInclude,
+    }),
+  ]);
 
   return serializeCharacter(character);
 }
 
 export async function deleteCharacter(characterId: string, client: PrismaClient = prisma) {
-  await client.character.delete({
+  const existingCharacter = await client.character.findUnique({
     where: {
       id: characterId,
     },
+    select: {
+      name: true,
+    },
   });
+
+  if (!existingCharacter) {
+    throw new Error(`Character ${characterId} not found.`);
+  }
+
+  await client.$transaction([
+    client.characterRelationship.deleteMany({
+      where: {
+        targetName: existingCharacter.name,
+      },
+    }),
+    client.character.delete({
+      where: {
+        id: characterId,
+      },
+    }),
+  ]);
 
   const remaining = await client.character.findMany({
     include: characterInclude,
@@ -389,6 +577,24 @@ export async function deleteCharacter(characterId: string, client: PrismaClient 
 function parseIntegerValue(rawValue: string | number) {
   const parsed = typeof rawValue === "number" ? rawValue : Number.parseInt(rawValue, 10);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseOptionalEnumValue<T extends string>(
+  rawValue: string | number,
+  allowedValues: Set<string>,
+  fieldName: string,
+) {
+  const parsedValue = String(rawValue).trim();
+
+  if (parsedValue.length === 0) {
+    return null;
+  }
+
+  if (!allowedValues.has(parsedValue)) {
+    throw new Error(`Unsupported ${fieldName}: ${parsedValue}`);
+  }
+
+  return parsedValue as T;
 }
 
 export async function updateCharacterField(
@@ -411,6 +617,24 @@ export async function updateCharacterField(
 
   if (stringFields.has(field)) {
     data[field] = typeof rawValue === "string" ? rawValue : String(rawValue);
+  } else if (field === "originCulture") {
+    data.originCulture = parseOptionalEnumValue<OriginCulture>(
+      rawValue,
+      originCultureFieldValues,
+      "origin culture",
+    );
+  } else if (field === "originSystem") {
+    data.originSystem = parseOptionalEnumValue<OriginSystem>(
+      rawValue,
+      originSystemFieldValues,
+      "home system",
+    );
+  } else if (field === "upbringing") {
+    data.upbringing = parseOptionalEnumValue<Upbringing>(
+      rawValue,
+      upbringingFieldValues,
+      "upbringing",
+    );
   } else if (attributeFields.has(field)) {
     const nextAttributes = {
       strength: existing.strength,
@@ -450,7 +674,7 @@ export async function updateCharacterField(
         data.radiation = clampNumber(value, 0, RADIATION_MAX);
         break;
       case "experience":
-        data.experience = clampNumber(value, 0, EXPERIENCE_MAX);
+        data.experience = Math.max(0, value);
         break;
       case "birr":
         data.birr = clampNumber(value, 0, 999999);
@@ -498,18 +722,29 @@ async function getNextOrder(
 export async function createRepeaterItem(
   characterId: string,
   kind: Extract<RepeaterKind, "relationship" | "talent" | "contact">,
+  options?: {
+    relationshipTargetName?: string;
+  },
   client: PrismaClient = prisma,
 ) {
   const order = (await getNextOrder(characterId, kind, client)) + 1;
 
   switch (kind) {
-    case "relationship":
+    case "relationship": {
+      const targetName = await normalizeRelationshipTargetName(
+        characterId,
+        options?.relationshipTargetName ?? "",
+        client,
+      );
+
       await client.characterRelationship.create({
         data: {
           characterId,
           order,
+          targetName,
         },
       });
+    }
       break;
     case "talent":
       await client.characterTalent.create({
@@ -598,11 +833,23 @@ export async function updateRepeaterField(
         where: { id },
       });
       characterId = relationship.characterId;
+      const nextTargetName =
+        field === "targetName"
+          ? await normalizeRelationshipTargetName(
+              relationship.characterId,
+              String(value),
+              client,
+              relationship.id,
+            )
+          : relationship.targetName;
       await client.characterRelationship.update({
         where: { id },
         data: {
-          ...(field === "targetName" ? { targetName: String(value) } : {}),
+          ...(field === "targetName" ? { targetName: nextTargetName } : {}),
           ...(field === "description" ? { description: String(value) } : {}),
+          ...(field === "targetName" && nextTargetName.length === 0
+            ? { isBuddy: false }
+            : {}),
         },
       });
       break;
@@ -668,7 +915,7 @@ export async function updateRepeaterField(
           ...(field === "bonus" ? { bonus: String(value) } : {}),
           ...(field === "comment" ? { comment: String(value) } : {}),
           ...(field === "encumbranceUnits"
-            ? { encumbranceUnits: clampNumber(parseIntegerValue(value), 0, 8) }
+            ? { encumbranceUnits: clampNumber(parseIntegerValue(value), 0, 20) }
             : {}),
         },
       });
@@ -762,6 +1009,27 @@ export async function setBuddy(
   relationshipId: string,
   client: PrismaClient = prisma,
 ) {
+  const relationship = await client.characterRelationship.findUniqueOrThrow({
+    where: {
+      id: relationshipId,
+    },
+  });
+
+  if (relationship.characterId !== characterId) {
+    throw new Error("Buddy selection must stay on the active sheet.");
+  }
+
+  if (!relationship.targetName) {
+    throw new Error("Pick another current sheet before marking a buddy.");
+  }
+
+  await normalizeRelationshipTargetName(
+    relationship.characterId,
+    relationship.targetName,
+    client,
+    relationship.id,
+  );
+
   await client.$transaction([
     client.characterRelationship.updateMany({
       where: {
