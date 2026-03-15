@@ -13,7 +13,7 @@ function findPreset(label: string) {
 }
 
 describe("rulebook starter-gear catalog", () => {
-  it("includes the Chapter 2 starter choices that were previously missing", () => {
+  it("includes the starter choices that were previously missing", () => {
     expect(findPreset("Modulation mask")).toBeDefined();
     expect(findPreset("Mechanical lockpick")).toBeDefined();
     expect(findPreset("An assortment of fake identities")).toBeDefined();

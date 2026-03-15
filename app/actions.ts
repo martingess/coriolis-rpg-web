@@ -13,11 +13,22 @@ import {
   updateCharacterField,
   updateRepeaterField,
 } from "@/lib/roster";
+import {
+  createTeamRepeaterItem,
+  deleteTeamRepeaterItem,
+  promoteKnownFaceToCharacter,
+  updateTeamField,
+  updateTeamRepeaterField,
+} from "@/lib/team";
 import type {
   CharacterScalarField,
   InventoryKind,
   RepeaterKind,
 } from "@/lib/roster-types";
+import type {
+  TeamRepeaterKind,
+  TeamScalarField,
+} from "@/lib/team-types";
 
 export async function createCharacterAction() {
   const character = await createCharacter();
@@ -104,4 +115,54 @@ export async function setBuddyAction(input: {
   const character = await setBuddy(input.characterId, input.relationshipId);
   revalidatePath("/");
   return character;
+}
+
+export async function updateTeamFieldAction(input: {
+  teamId: string;
+  field: TeamScalarField;
+  value: number | string;
+}) {
+  const team = await updateTeamField(input.teamId, input.field, input.value);
+  revalidatePath("/");
+  return team;
+}
+
+export async function createTeamRepeaterItemAction(input: {
+  teamId: string;
+  kind: Exclude<TeamRepeaterKind, "crewPosition">;
+}) {
+  const team = await createTeamRepeaterItem(input.teamId, input.kind);
+  revalidatePath("/");
+  return team;
+}
+
+export async function updateTeamRepeaterFieldAction(input: {
+  kind: TeamRepeaterKind;
+  id: string;
+  field: string;
+  value: number | string;
+}) {
+  const team = await updateTeamRepeaterField(
+    input.kind,
+    input.id,
+    input.field,
+    input.value,
+  );
+  revalidatePath("/");
+  return team;
+}
+
+export async function deleteTeamRepeaterItemAction(input: {
+  kind: Exclude<TeamRepeaterKind, "crewPosition">;
+  id: string;
+}) {
+  const team = await deleteTeamRepeaterItem(input.kind, input.id);
+  revalidatePath("/");
+  return team;
+}
+
+export async function promoteKnownFaceToCharacterAction(knownFaceId: string) {
+  const result = await promoteKnownFaceToCharacter(knownFaceId);
+  revalidatePath("/");
+  return result;
 }

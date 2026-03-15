@@ -34,6 +34,30 @@ enum Upbringing {
   privileged
 }
 
+enum TeamNoteTag {
+  mission
+  npc
+  faction
+  ship
+  mystery
+  debt
+  session
+}
+
+enum TeamFactionStance {
+  ally
+  neutral
+  enemy
+}
+
+enum TeamCrewRole {
+  captain
+  engineer
+  pilot
+  sensorOperator
+  gunner
+}
+
 model Character {
   id                String                  @id @default(cuid())
   name              String
@@ -89,9 +113,122 @@ model Character {
   updatedAt         DateTime                @updatedAt
   contacts          CharacterContact[]
   gearItems         CharacterGearItem[]
+  primaryCrewRoles  TeamCrewPosition[]      @relation("PrimaryCrewPosition")
+  backupCrewRoles   TeamCrewPosition[]      @relation("BackupCrewPosition")
+  promotedKnownFaces TeamKnownFace[]        @relation("PromotedKnownFace")
   relationships     CharacterRelationship[]
   talents           CharacterTalent[]
   weapons           CharacterWeapon[]
+}
+
+model Team {
+  id                String             @id @default(cuid())
+  name              String             @default("Bridge Dossier")
+  manifesto         String             @default("")
+  story             String             @default("")
+  groupConcept      String             @default("")
+  groupTalent       String             @default("")
+  patron            String             @default("")
+  nemesis           String             @default("")
+  shipName          String             @default("")
+  shipType          String             @default("")
+  shipClass         String             @default("")
+  shipProblem       String             @default("")
+  shipDebt          Int                @default(0)
+  shipUpgrades      String             @default("")
+  currentGoal       String             @default("")
+  nextLead          String             @default("")
+  reward            String             @default("")
+  deadline          String             @default("")
+  unresolvedMystery String             @default("")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  crewPositions     TeamCrewPosition[]
+  factionTies       TeamFactionTie[]
+  knownFaces        TeamKnownFace[]
+  notes             TeamNote[]
+  storyBeats        TeamStoryBeat[]
+}
+
+model TeamCrewPosition {
+  id                 String       @id @default(cuid())
+  teamId             String
+  order              Int
+  role               TeamCrewRole
+  primaryCharacterId String?
+  backupCharacterId  String?
+  notes              String       @default("")
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  backupCharacter    Character?   @relation("BackupCrewPosition", fields: [backupCharacterId], references: [id], onDelete: SetNull)
+  primaryCharacter   Character?   @relation("PrimaryCrewPosition", fields: [primaryCharacterId], references: [id], onDelete: SetNull)
+  team               Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, order])
+  @@unique([teamId, role])
+}
+
+model TeamStoryBeat {
+  id          String   @id @default(cuid())
+  teamId      String
+  order       Int
+  title       String   @default("")
+  description String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  team        Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, order])
+}
+
+model TeamNote {
+  id        String      @id @default(cuid())
+  teamId    String
+  order     Int
+  tag       TeamNoteTag @default(session)
+  title     String      @default("")
+  body      String      @default("")
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  team      Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, order])
+}
+
+model TeamKnownFace {
+  id                  String     @id @default(cuid())
+  teamId              String
+  order               Int
+  name                String     @default("")
+  concept             String     @default("")
+  faction             String     @default("")
+  lastSeen            String     @default("")
+  trustLevel          Int        @default(3)
+  notes               String     @default("")
+  portraitPath        String?
+  promotedCharacterId String?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  promotedCharacter   Character? @relation("PromotedKnownFace", fields: [promotedCharacterId], references: [id], onDelete: SetNull)
+  team                Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, order])
+}
+
+model TeamFactionTie {
+  id             String            @id @default(cuid())
+  teamId         String
+  order          Int
+  faction        String            @default("")
+  stance         TeamFactionStance @default(neutral)
+  heat           Int               @default(0)
+  leverageHolder String            @default("")
+  notes          String            @default("")
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  team           Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, order])
 }
 
 model CharacterRelationship {

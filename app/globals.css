@@ -267,3 +267,121 @@ select {
     inset 0 1px 0 rgba(255, 243, 211, 0.36),
     0 8px 18px rgba(185, 135, 44, 0.22);
 }
+
+.team-bridge-card,
+.team-member-card,
+.team-role-card,
+.team-known-face-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.45rem;
+  border: 1px solid var(--line-soft);
+  background:
+    linear-gradient(160deg, rgba(22, 31, 47, 0.92), rgba(10, 14, 23, 0.96)),
+    linear-gradient(130deg, rgba(201, 160, 80, 0.08), transparent 42%);
+  padding: 1rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 217, 0.05),
+    0 20px 70px rgba(2, 6, 12, 0.28);
+}
+
+.team-bridge-card::after,
+.team-member-card::after,
+.team-role-card::after,
+.team-known-face-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, rgba(201, 160, 80, 0.08), transparent 14%, transparent 86%, rgba(201, 160, 80, 0.06)),
+    radial-gradient(circle at top right, rgba(201, 160, 80, 0.08), transparent 32%);
+}
+
+.team-metric {
+  display: flex;
+  min-height: 5rem;
+  flex-direction: column;
+  justify-content: space-between;
+  border-radius: 1.1rem;
+  border: 1px solid var(--line-soft);
+  background: rgba(248, 238, 216, 0.05);
+  padding: 0.85rem;
+}
+
+.team-metric__label {
+  font-size: 0.64rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.team-metric__value {
+  font-family: var(--font-marcellus), serif;
+  font-size: 1.5rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--paper);
+}
+
+.team-readout-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid rgba(201, 160, 80, 0.08);
+  padding-bottom: 0.55rem;
+  font-size: 0.92rem;
+  color: var(--ink-muted);
+}
+
+.team-readout-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.team-avatar {
+  display: flex;
+  height: 4.5rem;
+  width: 4.5rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 1.2rem;
+  border: 1px solid var(--line-strong);
+  background:
+    radial-gradient(circle at top, rgba(201, 160, 80, 0.24), rgba(19, 24, 36, 0.2) 52%, rgba(8, 10, 16, 0.9) 100%);
+  font-family: var(--font-marcellus), serif;
+  font-size: 1.35rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--paper);
+}
+
+.team-avatar--large {
+  height: 14rem;
+  width: 100%;
+  border-radius: 1.4rem;
+  font-size: 2.4rem;
+}
+
+.team-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(201, 160, 80, 0.24);
+  background: rgba(201, 160, 80, 0.1);
+  padding: 0.4rem 0.72rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--paper);
+}
+
+.team-pill--muted {
+  border-color: rgba(201, 160, 80, 0.12);
+  background: rgba(248, 238, 216, 0.05);
+  color: var(--ink-faint);
+}

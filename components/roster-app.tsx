@@ -6,12 +6,17 @@ import {
   addInventoryPresetAction,
   createCharacterAction,
   createRepeaterItemAction,
+  createTeamRepeaterItemAction,
   deleteCharacterAction,
   deleteRepeaterItemAction,
+  deleteTeamRepeaterItemAction,
+  promoteKnownFaceToCharacterAction,
   renameCharacterAction,
   setBuddyAction,
   updateCharacterFieldAction,
   updateRepeaterFieldAction,
+  updateTeamFieldAction,
+  updateTeamRepeaterFieldAction,
 } from "@/app/actions";
 import {
   CounterTrack,
@@ -20,6 +25,7 @@ import {
   SavableTextField,
   SectionCard,
 } from "@/components/field-controls";
+import { TeamScreen } from "@/components/team-screen";
 import {
   calculateStarterGuidance,
   formatEncumbranceUnits,
@@ -44,11 +50,19 @@ import type {
   RepeaterKind,
   Upbringing,
 } from "@/lib/roster-types";
+import type {
+  TeamRecord,
+  TeamRepeaterKind,
+  TeamScalarField,
+} from "@/lib/team-types";
 
 type RosterAppProps = {
   initialCharacters: CharacterRecord[];
   inventoryCatalog: InventoryPreset[];
+  initialTeam: TeamRecord;
 };
+
+const TEAM_VIEW_ID = "__team__";
 
 const attributeFields: Array<{
   field: CharacterScalarField;
@@ -150,7 +164,7 @@ const allQuickNavSections = [
   { id: "appearance", label: "Appearance", eyebrow: "Presence" },
   { id: "conditions", label: "Conditions", eyebrow: "Trauma" },
   { id: "attributes", label: "Attributes", eyebrow: "Primary Stats" },
-  { id: "starter-rules", label: "Starter Rules", eyebrow: "Chapter 2 Guide" },
+  { id: "starter-rules", label: "Starter Rules", eyebrow: "Creation Guide" },
   { id: "relationships", label: "Relationships", eyebrow: "Other PCs" },
   { id: "skills", label: "Skills", eyebrow: "General & Advanced" },
   { id: "talents", label: "Talents", eyebrow: "Edge" },
@@ -181,12 +195,17 @@ function describeVariance(actual: number, target: number) {
   return actual > target ? `${delta} above target.` : `${delta} below target.`;
 }
 
-export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProps) {
+export function RosterApp({
+  initialCharacters,
+  inventoryCatalog,
+  initialTeam,
+}: RosterAppProps) {
   const [characters, setCharacters] = useState(initialCharacters);
-  const [selectedId, setSelectedId] = useState(initialCharacters[0]?.id ?? null);
+  const [team, setTeam] = useState(initialTeam);
+  const [selectedPanelId, setSelectedPanelId] = useState<string>(TEAM_VIEW_ID);
   const [drawerKind, setDrawerKind] = useState<InventoryKind | null>(null);
   const [notice, setNotice] = useState<string | null>(
-    "Autosaves on blur. The Chapter 2 starter-gear catalog is complete and rulebook-aligned.",
+    "Autosaves on blur. Shared crew data and character sheets stay in sync.",
   );
   const [isStarterRulesHidden, setIsStarterRulesHidden] = useState(false);
   const [activeSectionId, setActiveSectionId] = useState<QuickNavSectionId>(
@@ -195,10 +214,13 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
   const [isPending, startTransition] = useTransition();
   const [isUploading, setIsUploading] = useState(false);
 
+  const isTeamSelected = selectedPanelId === TEAM_VIEW_ID;
   const selectedCharacter =
-    characters.find((character) => character.id === selectedId) ??
-    characters[0] ??
-    null;
+    isTeamSelected
+      ? null
+      : characters.find((character) => character.id === selectedPanelId) ??
+        characters[0] ??
+        null;
   const selectedCharacterId = selectedCharacter?.id ?? null;
   const quickNavSections = isStarterRulesHidden
     ? allQuickNavSections.filter((section) => section.id !== "starter-rules")
@@ -217,10 +239,14 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
     : [];
 
   useEffect(() => {
-    if (!selectedCharacter && characters[0]) {
-      setSelectedId(characters[0].id);
+    if (isTeamSelected) {
+      return;
     }
-  }, [characters, selectedCharacter]);
+
+    if (!selectedCharacter) {
+      setSelectedPanelId(characters[0]?.id ?? TEAM_VIEW_ID);
+    }
+  }, [characters, isTeamSelected, selectedCharacter]);
 
   useEffect(() => {
     setActiveSectionId(allQuickNavSections[0].id);
@@ -285,11 +311,23 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
   }, [isStarterRulesHidden, selectedCharacterId]);
 
   function patchCharacter(updatedCharacter: CharacterRecord) {
-    setCharacters((currentCharacters) =>
-      currentCharacters.map((character) =>
+    setCharacters((currentCharacters) => {
+      const existingIndex = currentCharacters.findIndex(
+        (character) => character.id === updatedCharacter.id,
+      );
+
+      if (existingIndex === -1) {
+        return [...currentCharacters, updatedCharacter];
+      }
+
+      return currentCharacters.map((character) =>
         character.id === updatedCharacter.id ? updatedCharacter : character,
-      ),
-    );
+      );
+    });
+  }
+
+  function patchTeam(updatedTeam: TeamRecord) {
+    setTeam(updatedTeam);
   }
 
   function runTask(task: () => Promise<void>, successMessage?: string) {
@@ -320,6 +358,17 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
     });
   }
 
+  function commitTeamField(field: TeamScalarField, value: string | number) {
+    runTask(async () => {
+      const updated = await updateTeamFieldAction({
+        teamId: team.id,
+        field,
+        value,
+      });
+      patchTeam(updated);
+    });
+  }
+
   function commitRepeater(
     kind: RepeaterKind,
     id: string,
@@ -329,6 +378,18 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
     runTask(async () => {
       const updated = await updateRepeaterFieldAction({ kind, id, field, value });
       patchCharacter(updated);
+    });
+  }
+
+  function commitTeamRepeater(
+    kind: TeamRepeaterKind,
+    id: string,
+    field: string,
+    value: string | number,
+  ) {
+    runTask(async () => {
+      const updated = await updateTeamRepeaterFieldAction({ kind, id, field, value });
+      patchTeam(updated);
     });
   }
 
@@ -358,6 +419,35 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
 
       patchCharacter(payload.character);
       setNotice("Portrait updated.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Portrait upload failed.");
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  async function uploadKnownFacePortrait(knownFaceId: string, file: File) {
+    setIsUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch(`/api/known-faces/${knownFaceId}/portrait`, {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json()) as {
+        team?: TeamRecord;
+        error?: string;
+      };
+
+      if (!response.ok || !payload.team) {
+        throw new Error(payload.error ?? "Portrait upload failed.");
+      }
+
+      patchTeam(payload.team);
+      setNotice("Known-face portrait updated.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Portrait upload failed.");
     } finally {
@@ -475,7 +565,7 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
             <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div className="space-y-1">
                 <p className="text-[0.72rem] uppercase tracking-[0.34em] text-[var(--ink-faint)]">
-                  Character Roster
+                  Crew & Character Roster
                 </p>
                 <h1 className="font-display text-3xl uppercase tracking-[0.16em] text-[var(--paper)] md:text-4xl">
                   Coriolis Dossier
@@ -489,7 +579,7 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
                     runTask(async () => {
                       const created = await createCharacterAction();
                       setCharacters((currentCharacters) => [...currentCharacters, created]);
-                      setSelectedId(created.id);
+                      setSelectedPanelId(created.id);
                     }, "New sheet opened.");
                   }}
                 >
@@ -560,7 +650,7 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
                     runTask(async () => {
                       const remaining = await deleteCharacterAction(selectedCharacter.id);
                       setCharacters(remaining);
-                      setSelectedId(remaining[0]?.id ?? null);
+                      setSelectedPanelId(remaining[0]?.id ?? TEAM_VIEW_ID);
                     }, "Sheet removed.");
                   }}
                 >
@@ -579,8 +669,19 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
             </div>
 
             <div className="flex gap-2 overflow-x-auto pb-1">
+              <button
+                type="button"
+                className={`min-w-fit rounded-full border px-4 py-2 text-sm uppercase tracking-[0.18em] transition ${
+                  isTeamSelected
+                    ? "border-[var(--gold)] bg-[color:rgba(201,160,80,0.18)] text-[var(--paper)]"
+                    : "border-[var(--line-soft)] bg-[color:rgba(245,231,204,0.06)] text-[var(--ink-muted)] hover:border-[var(--line-strong)] hover:text-[var(--paper)]"
+                }`}
+                onClick={() => setSelectedPanelId(TEAM_VIEW_ID)}
+              >
+                Team
+              </button>
               {characters.map((character) => {
-                const isActive = character.id === selectedCharacter?.id;
+                const isActive = character.id === selectedCharacter?.id && !isTeamSelected;
 
                 return (
                   <button
@@ -591,7 +692,7 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
                         ? "border-[var(--gold)] bg-[color:rgba(201,160,80,0.18)] text-[var(--paper)]"
                         : "border-[var(--line-soft)] bg-[color:rgba(245,231,204,0.06)] text-[var(--ink-muted)] hover:border-[var(--line-strong)] hover:text-[var(--paper)]"
                     }`}
-                    onClick={() => setSelectedId(character.id)}
+                    onClick={() => setSelectedPanelId(character.id)}
                   >
                     {character.name}
                   </button>
@@ -654,7 +755,47 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
           </div>
         </header>
 
-        {selectedCharacter ? (
+        {isTeamSelected ? (
+          <main className="grid gap-4 xl:gap-5">
+            <TeamScreen
+              team={team}
+              characters={characters}
+              onOpenCharacter={(characterId) => setSelectedPanelId(characterId)}
+              onUpdateField={(field, value) =>
+                commitTeamField(field as TeamScalarField, value)
+              }
+              onCreateRepeater={(kind) => {
+                runTask(async () => {
+                  const updated = await createTeamRepeaterItemAction({
+                    teamId: team.id,
+                    kind,
+                  });
+                  patchTeam(updated);
+                }, "Team ledger updated.");
+              }}
+              onUpdateRepeater={(kind, id, field, value) =>
+                commitTeamRepeater(kind as TeamRepeaterKind, id, field, value)
+              }
+              onRemoveRepeater={(kind, id) => {
+                runTask(async () => {
+                  const updated = await deleteTeamRepeaterItemAction({ kind, id });
+                  patchTeam(updated);
+                }, "Team ledger updated.");
+              }}
+              onKnownFacePortraitUpload={async (knownFaceId, file) => {
+                await uploadKnownFacePortrait(knownFaceId, file);
+              }}
+              onPromoteKnownFace={(knownFaceId) => {
+                runTask(async () => {
+                  const result = await promoteKnownFaceToCharacterAction(knownFaceId);
+                  patchTeam(result.team);
+                  patchCharacter(result.character);
+                  setSelectedPanelId(result.character.id);
+                }, "Known face promoted to crew.");
+              }}
+            />
+          </main>
+        ) : selectedCharacter ? (
           <main className="grid gap-4 lg:grid-cols-2 xl:gap-5">
             <SectionCard
               id="identity"
@@ -876,7 +1017,7 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
               <SectionCard
                 id="starter-rules"
                 title="Starter Rules"
-                eyebrow="Chapter 2 Guide"
+                eyebrow="Creation Guide"
                 actions={
                   <button
                     type="button"
@@ -1588,7 +1729,7 @@ export function RosterApp({ initialCharacters, inventoryCatalog }: RosterAppProp
                 runTask(async () => {
                   const created = await createCharacterAction();
                   setCharacters([created]);
-                  setSelectedId(created.id);
+                  setSelectedPanelId(created.id);
                 }, "New sheet opened.");
               }}
             >

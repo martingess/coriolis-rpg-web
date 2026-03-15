@@ -33,7 +33,7 @@ import type {
 } from "@/lib/roster-types";
 import { seededCharacters } from "@/lib/seed-data";
 
-const characterInclude = {
+export const characterInclude = {
   relationships: {
     orderBy: {
       order: "asc" as const,
@@ -114,7 +114,7 @@ const originCultureFieldValues = new Set<string>(originCultureValues);
 const originSystemFieldValues = new Set<string>(originSystemValues);
 const upbringingFieldValues = new Set<string>(upbringingValues);
 
-function serializeCharacter(character: CharacterWithRelations): CharacterRecord {
+export function serializeCharacter(character: CharacterWithRelations): CharacterRecord {
   return {
     id: character.id,
     name: character.name,
