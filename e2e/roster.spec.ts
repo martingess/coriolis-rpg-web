@@ -152,6 +152,36 @@ test("route reflects the selected team or character page after reload", async ({
   await expect(page.getByRole("heading", { name: "Team Story" })).toBeVisible();
 });
 
+test("team best by skills opens a full scrollable modal with every skill", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 960 });
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/team$/);
+
+  const teamMembersSection = page
+    .getByRole("heading", { name: "Crew Members" })
+    .locator("xpath=ancestor::section[1]");
+  const skillsCard = teamMembersSection
+    .getByText("Best by Skills", { exact: true })
+    .locator("xpath=..");
+
+  await expect(skillsCard.getByText("Observation", { exact: true })).toBeVisible();
+  await expect(skillsCard.getByText("Science", { exact: true })).toHaveCount(0);
+  await expect(skillsCard.getByText("Dexterity", { exact: true })).toHaveCount(0);
+
+  await skillsCard.getByRole("button", { name: "Show all" }).click();
+
+  const fullSkillsDialog = page.getByRole("dialog", { name: "All Crew Skills" });
+  await expect(fullSkillsDialog).toBeVisible();
+  await expect(fullSkillsDialog.getByText("Dexterity", { exact: true })).toBeVisible();
+  await expect(fullSkillsDialog.getByText("Force", { exact: true })).toBeVisible();
+  await expect(fullSkillsDialog.getByText("Science", { exact: true })).toBeVisible();
+  await expect(fullSkillsDialog.getByText("Medicurgy", { exact: true })).toBeVisible();
+  await expect(fullSkillsDialog.getByText("Mystic Powers", { exact: true })).toBeVisible();
+
+  await fullSkillsDialog.getByRole("button", { name: "Close" }).click();
+  await expect(fullSkillsDialog).toHaveCount(0);
+});
+
 test("desktop layout keeps the full sheet readable", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 960 });
   await page.goto("/");

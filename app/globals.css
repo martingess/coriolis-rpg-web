@@ -1053,6 +1053,13 @@ select {
   color: var(--ink-muted);
 }
 
+.team-readout-row > :last-child {
+  min-width: 0;
+  flex: 1 1 auto;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
 .team-readout-row:last-child {
   border-bottom: 0;
   padding-bottom: 0;

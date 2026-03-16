@@ -1,5 +1,7 @@
 "use client";
 
+import { useId, useState } from "react";
+
 import {
   SavableNumberField,
   SavableSelectField,
@@ -74,23 +76,52 @@ const attributeSpotlightFields: Array<{
   { field: "empathy" },
 ];
 
-const skillSpotlightFields: Array<{
-  field: Extract<
-    keyof CharacterRecord,
-    | "observation"
-    | "pilot"
-    | "manipulation"
-    | "command"
-    | "technology"
-    | "rangedCombat"
-  >;
-}> = [
-  { field: "observation" },
-  { field: "pilot" },
-  { field: "manipulation" },
-  { field: "command" },
-  { field: "technology" },
-  { field: "rangedCombat" },
+type SkillReadoutField = Extract<
+  keyof CharacterRecord,
+  | "dexterity"
+  | "force"
+  | "infiltration"
+  | "manipulation"
+  | "meleeCombat"
+  | "observation"
+  | "rangedCombat"
+  | "survival"
+  | "command"
+  | "culture"
+  | "dataDjinn"
+  | "medicurgy"
+  | "mysticPowers"
+  | "pilot"
+  | "science"
+  | "technology"
+>;
+
+const previewSkillReadoutFields: SkillReadoutField[] = [
+  "observation",
+  "pilot",
+  "manipulation",
+  "command",
+  "technology",
+  "rangedCombat",
+];
+
+const allSkillReadoutFields: SkillReadoutField[] = [
+  "dexterity",
+  "force",
+  "infiltration",
+  "manipulation",
+  "meleeCombat",
+  "observation",
+  "rangedCombat",
+  "survival",
+  "command",
+  "culture",
+  "dataDjinn",
+  "medicurgy",
+  "mysticPowers",
+  "pilot",
+  "science",
+  "technology",
 ];
 
 type TeamScreenProps = {
@@ -146,7 +177,9 @@ export function TeamScreen({
   onUpdateRepeater,
   team,
 }: TeamScreenProps) {
+  const [isSkillsModalOpen, setIsSkillsModalOpen] = useState(false);
   const { lt } = useLocaleText();
+  const skillsDialogTitleId = useId();
   const charactersById = new Map(characters.map((character) => [character.id, character]));
   const rolesByCharacterId = new Map<string, string[]>();
 
@@ -203,6 +236,31 @@ export function TeamScreen({
       label: character.name,
     })),
   ];
+  const skillReadoutMatches = new Map(
+    allSkillReadoutFields.map((field) => [
+      field,
+      findBestCharactersBySkill(characters, field),
+    ]),
+  );
+  const hasHiddenSkillReadouts =
+    allSkillReadoutFields.length > previewSkillReadoutFields.length;
+
+  function renderSkillReadout(field: SkillReadoutField) {
+    const bestMatch = skillReadoutMatches.get(field);
+
+    return (
+      <div key={field} className="team-readout-row">
+        <span>{getSkillLabel(field)}</span>
+        <span>
+          {bestMatch
+            ? `${formatBestMatchNames(bestMatch.winners)} · ${bestMatch.value}`
+            : characters.length > 0
+              ? lt("No trained crew", "Немає підготовленого екіпажу")
+              : lt("No crew", "Немає екіпажу")}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 gap-4 xl:gap-5">
@@ -390,23 +448,19 @@ export function TeamScreen({
                 {lt("Best by Skills", "Найкращі за навичками")}
               </p>
               <div className="mt-4 grid gap-3">
-                {skillSpotlightFields.map((entry) => {
-                  const bestMatch = findBestCharactersBySkill(characters, entry.field);
-
-                  return (
-                    <div key={entry.field} className="team-readout-row">
-                      <span>{getSkillLabel(entry.field)}</span>
-                      <span>
-                        {bestMatch
-                          ? `${formatBestMatchNames(bestMatch.winners)} · ${bestMatch.value}`
-                          : characters.length > 0
-                            ? lt("No trained crew", "Немає підготовленого екіпажу")
-                            : lt("No crew", "Немає екіпажу")}
-                      </span>
-                    </div>
-                  );
-                })}
+                {previewSkillReadoutFields.map(renderSkillReadout)}
               </div>
+              {hasHiddenSkillReadouts ? (
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    className="coriolis-chip"
+                    onClick={() => setIsSkillsModalOpen(true)}
+                  >
+                    {lt("Show all", "Показати все")}
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             <div className="rounded-[1.35rem] border border-[var(--line-soft)] bg-[var(--panel-soft)] p-4">
@@ -432,6 +486,7 @@ export function TeamScreen({
                 })}
               </div>
             </div>
+
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
@@ -507,6 +562,51 @@ export function TeamScreen({
             })}
           </div>
         </div>
+
+        {isSkillsModalOpen ? (
+          <div
+            className="coriolis-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={skillsDialogTitleId}
+            onClick={() => setIsSkillsModalOpen(false)}
+          >
+            <div
+              className="coriolis-modal__dialog"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="coriolis-modal__header">
+                <div className="coriolis-modal__copy">
+                  <p className="coriolis-modal__eyebrow">
+                    {lt("Complete Crew Skill Grid", "Повна сітка навичок екіпажу")}
+                  </p>
+                  <h2 id={skillsDialogTitleId} className="coriolis-modal__title">
+                    {lt("All Crew Skills", "Усі навички екіпажу")}
+                  </h2>
+                  <p className="coriolis-modal__description">
+                    {lt(
+                      "Review every Coriolis skill, including ties and untrained gaps, in one scrollable roster.",
+                      "Переглядайте всі навички Coriolis, включно з нічиїми та прогалинами в підготовці, в одному прокручуваному списку.",
+                    )}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="coriolis-chip"
+                  onClick={() => setIsSkillsModalOpen(false)}
+                >
+                  {lt("Close", "Закрити")}
+                </button>
+              </div>
+
+              <div className="coriolis-modal__body">
+                <div className="rounded-[1.35rem] border border-[var(--line-soft)] bg-[var(--panel-soft)] p-4">
+                  <div className="grid gap-3">{allSkillReadoutFields.map(renderSkillReadout)}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </SectionCard>
 
       <SectionCard
