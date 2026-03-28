@@ -1,6 +1,8 @@
 export const TEAM_PANEL_ID = "__team__";
 export const TEAM_HREF = "/team";
 export const CHARACTER_HREF_PREFIX = "/characters";
+export const COMBAT_HREF = "/combat";
+export const SHIP_COMBAT_HREF = "/combat/ship";
 
 export function getCharacterHref(characterId: string) {
   return `${CHARACTER_HREF_PREFIX}/${encodeURIComponent(characterId)}`;

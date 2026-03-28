@@ -202,6 +202,14 @@ select {
   display: none;
 }
 
+.coriolis-quick-nav__rail--stacked {
+  display: grid;
+  gap: 0.75rem;
+  overflow: visible;
+  padding-top: 1rem;
+  padding-bottom: 0;
+}
+
 .coriolis-quick-nav__button {
   position: relative;
   z-index: 1;
@@ -219,6 +227,11 @@ select {
     border-color 160ms ease,
     background 160ms ease,
     box-shadow 160ms ease;
+}
+
+.coriolis-quick-nav__button--stacked {
+  min-width: 0;
+  width: 100%;
 }
 
 .coriolis-quick-nav__button:hover {

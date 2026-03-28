@@ -12,7 +12,11 @@ import {
 
 const languageOptions: AppLanguage[] = ["en", "uk"];
 
-export function LanguageSwitcher() {
+type LanguageSwitcherProps = {
+  className?: string;
+};
+
+export function LanguageSwitcher({ className = "" }: LanguageSwitcherProps) {
   const { t, i18n: activeI18n } = useTranslation();
   const [isPending, startTransition] = useTransition();
   const currentLanguage = (activeI18n.resolvedLanguage ??
@@ -46,7 +50,9 @@ export function LanguageSwitcher() {
   }
 
   return (
-    <div className="flex items-center gap-2 rounded-full border border-[var(--line-soft)] bg-[color:rgba(245,231,204,0.06)] px-2 py-1">
+    <div
+      className={`flex flex-wrap items-center gap-2 rounded-full border border-[var(--line-soft)] bg-[color:rgba(245,231,204,0.06)] px-2 py-1 ${className}`.trim()}
+    >
       <span className="px-2 text-[0.68rem] uppercase tracking-[0.24em] text-[var(--ink-faint)]">
         {t("common.language.label")}
       </span>

@@ -45,6 +45,15 @@ import {
   type TeamQuickNavSectionId,
 } from "@/components/team-screen";
 import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
+} from "@/components/ui/drawer";
+import {
   calculateStarterGuidance,
   getEncumbranceCapacityUnits,
   getEncumbranceUsedUnits,
@@ -82,12 +91,19 @@ import {
   upbringingValues,
 } from "@/lib/roster-types";
 import {
+  COMBAT_HREF,
+  SHIP_COMBAT_HREF,
   TEAM_HREF,
   TEAM_PANEL_ID,
   getCharacterHref,
   getPanelIdFromPathname,
 } from "@/lib/roster-routes";
-import { i18n } from "@/lib/i18n";
+import {
+  defaultLanguage,
+  i18n,
+  languageStorageKey,
+  type AppLanguage,
+} from "@/lib/i18n";
 import { useLocaleText } from "@/lib/use-locale-text";
 import type {
   CharacterConditionModifierRecord,
@@ -231,6 +247,34 @@ type HeaderQuickNavSection<TSectionId extends string> = {
   label: string;
   eyebrow: string;
 };
+type MobileMenuIconKind =
+  | "appearance"
+  | "book"
+  | "chart"
+  | "clock"
+  | "compass"
+  | "delete"
+  | "edit"
+  | "factions"
+  | "gear"
+  | "group"
+  | "home"
+  | "identity"
+  | "language"
+  | "mission"
+  | "notes"
+  | "plus"
+  | "roles"
+  | "ship"
+  | "spark"
+  | "weapon";
+type MobileMenuItemProps = {
+  active?: boolean;
+  icon: MobileMenuIconKind;
+  onClick: () => void;
+  title: string;
+  tone?: "default" | "danger";
+};
 
 type HeaderQuickNavProps<TSectionId extends string> = {
   activeLabel: string;
@@ -238,6 +282,15 @@ type HeaderQuickNavProps<TSectionId extends string> = {
   ariaLabel: string;
   description: string;
   onJumpToSection: (sectionId: TSectionId) => void;
+  sections: readonly HeaderQuickNavSection<TSectionId>[];
+};
+type QuickNavLayout = "rail" | "stacked";
+type QuickNavSectionListProps<TSectionId extends string> = {
+  activeSectionId: TSectionId;
+  ariaLabel: string;
+  layout?: QuickNavLayout;
+  onJumpToSection: (sectionId: TSectionId) => void;
+  onSectionSelect?: () => void;
   sections: readonly HeaderQuickNavSection<TSectionId>[];
 };
 
@@ -283,6 +336,325 @@ function getCharacterQuickNavSections(
   ] as const;
 }
 
+function getCharacterMobileMenuIcon(sectionId: QuickNavSectionId): MobileMenuIconKind {
+  switch (sectionId) {
+    case "identity":
+      return "identity";
+    case "appearance":
+      return "appearance";
+    case "conditions":
+      return "spark";
+    case "stats":
+      return "chart";
+    case "starter-rules":
+      return "book";
+    case "relationships":
+      return "group";
+    case "talents":
+      return "spark";
+    case "armor":
+      return "roles";
+    case "weapons":
+      return "weapon";
+    case "gear":
+    case "tiny-items":
+      return "gear";
+    case "people-ive-met":
+      return "group";
+    case "my-cabin":
+      return "home";
+    case "notes":
+      return "notes";
+  }
+}
+
+function getTeamMobileMenuIcon(sectionId: TeamQuickNavSectionId): MobileMenuIconKind {
+  switch (sectionId) {
+    case "team-identity":
+      return "compass";
+    case "team-members":
+      return "group";
+    case "team-roles":
+      return "roles";
+    case "team-ship":
+      return "ship";
+    case "team-mission":
+      return "mission";
+    case "team-factions":
+      return "factions";
+    case "team-timeline":
+      return "clock";
+    case "team-faces":
+      return "identity";
+    case "team-notes":
+      return "notes";
+  }
+}
+
+function MobileMenuIcon({
+  kind,
+}: {
+  kind: MobileMenuIconKind;
+}) {
+  const sharedProps = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    strokeWidth: 1.8,
+  };
+
+  switch (kind) {
+    case "identity":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <path {...sharedProps} d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" />
+          <path {...sharedProps} d="M5 20a7 7 0 0 1 14 0" />
+        </svg>
+      );
+    case "appearance":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <path {...sharedProps} d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" />
+          <circle {...sharedProps} cx="12" cy="12" r="2.5" />
+        </svg>
+      );
+    case "spark":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <path {...sharedProps} d="m12 3 1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3Z" />
+        </svg>
+      );
+    case "chart":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <path {...sharedProps} d="M4 19h16" />
+          <path {...sharedProps} d="M7 16V9" />
+          <path {...sharedProps} d="M12 16V5" />
+          <path {...sharedProps} d="M17 16v-4" />
+        </svg>
+      );
+    case "book":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <path {...sharedProps} d="M5 5.5A2.5 2.5 0 0 1 7.5 3H19v17H7.5A2.5 2.5 0 0 0 5 22Z" />
+          <path {...sharedProps} d="M5 5.5V22" />
+        </svg>
+      );
+    case "group":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <path {...sharedProps} d="M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
+          <path {...sharedProps} d="M17 12a2.5 2.5 0 1 0 0-5" />
+          <path {...sharedProps} d="M3.5 20a5.5 5.5 0 0 1 11 0" />
+          <path {...sharedProps} d="M15 19a4.5 4.5 0 0 1 5.5-3.6" />
+        </svg>
+      );
+    case "roles":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <path {...sharedProps} d="M12 3 4 7v6c0 4.4 3.2 6.9 8 8 4.8-1.1 8-3.6 8-8V7l-8-4Z" />
+          <path {...sharedProps} d="m9.5 12 1.7 1.7 3.3-3.4" />
+        </svg>
+      );
+    case "weapon":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <path {...sharedProps} d="m4 20 6.5-6.5" />
+          <path {...sharedProps} d="M10 4 20 14" />
+          <path {...sharedProps} d="M13 3 21 11" />
+          <path {...sharedProps} d="M8.5 8.5 6 11l7 7 2.5-2.5" />
+        </svg>
+      );
+    case "gear":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <path {...sharedProps} d="M6 9.5A2.5 2.5 0 0 1 8.5 7h7A2.5 2.5 0 0 1 18 9.5V19H6Z" />
+          <path {...sharedProps} d="M9 10V8a3 3 0 1 1 6 0v2" />
+        </svg>
+      );
+    case "home":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <path {...sharedProps} d="m4 10 8-6 8 6" />
+          <path {...sharedProps} d="M6 9.5V20h12V9.5" />
+        </svg>
+      );
+    case "notes":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <path {...sharedProps} d="M7 3h7l5 5v13H7Z" />
+          <path {...sharedProps} d="M14 3v5h5" />
+          <path {...sharedProps} d="M10 13h6" />
+          <path {...sharedProps} d="M10 17h6" />
+        </svg>
+      );
+    case "compass":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <circle {...sharedProps} cx="12" cy="12" r="8" />
+          <path {...sharedProps} d="m9 15 2-6 6-2-2 6-6 2Z" />
+        </svg>
+      );
+    case "ship":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <path {...sharedProps} d="M4 16h16l-2 3H6l-2-3Z" />
+          <path {...sharedProps} d="M8 16V8l4-3 4 3v8" />
+          <path {...sharedProps} d="M12 5v11" />
+        </svg>
+      );
+    case "mission":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <circle {...sharedProps} cx="12" cy="12" r="7" />
+          <circle {...sharedProps} cx="12" cy="12" r="3" />
+          <path {...sharedProps} d="M12 2v3" />
+          <path {...sharedProps} d="M12 19v3" />
+        </svg>
+      );
+    case "factions":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <circle {...sharedProps} cx="6" cy="6" r="2" />
+          <circle {...sharedProps} cx="18" cy="7" r="2" />
+          <circle {...sharedProps} cx="12" cy="18" r="2" />
+          <path {...sharedProps} d="M8 6h8" />
+          <path {...sharedProps} d="m7.5 7.5 3 8" />
+          <path {...sharedProps} d="m16.5 8.5-3 7" />
+        </svg>
+      );
+    case "clock":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <circle {...sharedProps} cx="12" cy="12" r="8" />
+          <path {...sharedProps} d="M12 8v5l3 2" />
+        </svg>
+      );
+    case "plus":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <path {...sharedProps} d="M12 5v14" />
+          <path {...sharedProps} d="M5 12h14" />
+        </svg>
+      );
+    case "edit":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <path {...sharedProps} d="m4 20 4.5-1 9-9-3.5-3.5-9 9L4 20Z" />
+          <path {...sharedProps} d="m13 6 3.5 3.5" />
+        </svg>
+      );
+    case "delete":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <path {...sharedProps} d="M5 7h14" />
+          <path {...sharedProps} d="M9 7V5h6v2" />
+          <path {...sharedProps} d="m8 7 1 12h6l1-12" />
+        </svg>
+      );
+    case "language":
+      return (
+        <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24">
+          <path {...sharedProps} d="M4 6h8" />
+          <path {...sharedProps} d="M8 4v2c0 5-2 8-4 10" />
+          <path {...sharedProps} d="M6 10c1.2 2 2.8 3.7 5 5" />
+          <path {...sharedProps} d="M14 20 18 9l4 11" />
+          <path {...sharedProps} d="M15.5 16h5" />
+        </svg>
+      );
+  }
+}
+
+function MobileMenuItem({
+  active = false,
+  icon,
+  onClick,
+  title,
+  tone = "default",
+}: MobileMenuItemProps) {
+  const toneClasses =
+    tone === "danger"
+      ? "border-[rgba(255,118,88,0.18)] bg-[rgba(255,118,88,0.08)] text-[var(--paper)]"
+      : "border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.03)] text-[var(--paper)]";
+
+  return (
+    <button
+      type="button"
+      className={`flex w-full items-center gap-3 rounded-[1rem] border px-3 py-3 text-left transition hover:border-[var(--line-strong)] hover:bg-[color:rgba(248,238,216,0.06)] ${toneClasses}`}
+      aria-current={active ? "location" : undefined}
+      onClick={onClick}
+    >
+      <span
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border ${
+          tone === "danger"
+            ? "border-[rgba(255,118,88,0.24)] bg-[rgba(255,118,88,0.08)] text-[rgba(255,205,195,0.92)]"
+            : active
+              ? "border-[rgba(201,160,80,0.32)] bg-[rgba(201,160,80,0.14)] text-[var(--gold)]"
+              : "border-[rgba(201,160,80,0.14)] bg-[rgba(248,238,216,0.04)] text-[var(--ink-muted)]"
+        }`}
+      >
+        <MobileMenuIcon kind={icon} />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[0.88rem] uppercase tracking-[0.2em]">
+        {title}
+      </span>
+      <span
+        className={`h-2.5 w-2.5 rounded-full ${
+          active ? "bg-[var(--gold)] shadow-[0_0_10px_rgba(201,160,80,0.55)]" : "bg-transparent"
+        }`}
+      />
+    </button>
+  );
+}
+
+function QuickNavSectionList<TSectionId extends string>({
+  activeSectionId,
+  ariaLabel,
+  layout = "rail",
+  onJumpToSection,
+  onSectionSelect,
+  sections,
+}: QuickNavSectionListProps<TSectionId>) {
+  return (
+    <div
+      className={`coriolis-quick-nav__rail ${
+        layout === "stacked" ? "coriolis-quick-nav__rail--stacked" : ""
+      }`}
+      aria-label={ariaLabel}
+    >
+      {sections.map((section, index) => {
+        const isActive = section.id === activeSectionId;
+
+        return (
+          <button
+            key={section.id}
+            type="button"
+            className={`coriolis-quick-nav__button ${
+              isActive ? "coriolis-quick-nav__button--active" : ""
+            } ${layout === "stacked" ? "coriolis-quick-nav__button--stacked" : ""}`}
+            aria-current={isActive ? "location" : undefined}
+            onClick={() => {
+              onJumpToSection(section.id);
+              onSectionSelect?.();
+            }}
+          >
+            <span className="text-[0.62rem] uppercase tracking-[0.3em] text-[var(--ink-faint)]">
+              {String(index + 1).padStart(2, "0")}
+            </span>
+            <span className="text-sm uppercase tracking-[0.18em] text-[var(--paper)]">
+              {section.label}
+            </span>
+            <span className="text-[0.62rem] uppercase tracking-[0.24em] text-[var(--ink-muted)]">
+              {section.eyebrow}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function HeaderQuickNav<TSectionId extends string>({
   activeLabel,
   activeSectionId,
@@ -294,14 +666,14 @@ function HeaderQuickNav<TSectionId extends string>({
   const { t } = useTranslation();
 
   return (
-    <div className="coriolis-quick-nav">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <div className="coriolis-quick-nav hidden lg:block">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-center gap-3">
           <p className="text-[0.68rem] uppercase tracking-[0.36em] text-[var(--ink-faint)]">
             {t("common.quickNav.label")}
           </p>
-          <div className="hidden h-px w-20 bg-[linear-gradient(90deg,rgba(201,160,80,0.3),transparent)] md:block" />
-          <p className="hidden text-sm text-[var(--ink-muted)] md:block">{description}</p>
+          <div className="hidden h-px w-20 bg-[linear-gradient(90deg,rgba(201,160,80,0.3),transparent)] lg:block" />
+          <p className="hidden text-sm text-[var(--ink-muted)] lg:block">{description}</p>
         </div>
         <div className="flex items-center gap-2 self-start rounded-full border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.04)] px-3 py-1 text-[0.68rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
           <span className="h-2 w-2 rounded-full bg-[var(--gold)] shadow-[0_0_14px_rgba(201,160,80,0.5)]" />
@@ -309,33 +681,12 @@ function HeaderQuickNav<TSectionId extends string>({
         </div>
       </div>
 
-      <div className="coriolis-quick-nav__rail" aria-label={ariaLabel}>
-        {sections.map((section, index) => {
-          const isActive = section.id === activeSectionId;
-
-          return (
-            <button
-              key={section.id}
-              type="button"
-              className={`coriolis-quick-nav__button ${
-                isActive ? "coriolis-quick-nav__button--active" : ""
-              }`}
-              aria-current={isActive ? "location" : undefined}
-              onClick={() => onJumpToSection(section.id)}
-            >
-              <span className="text-[0.62rem] uppercase tracking-[0.3em] text-[var(--ink-faint)]">
-                {String(index + 1).padStart(2, "0")}
-              </span>
-              <span className="text-sm uppercase tracking-[0.18em] text-[var(--paper)]">
-                {section.label}
-              </span>
-              <span className="text-[0.62rem] uppercase tracking-[0.24em] text-[var(--ink-muted)]">
-                {section.eyebrow}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      <QuickNavSectionList
+        activeSectionId={activeSectionId}
+        ariaLabel={ariaLabel}
+        onJumpToSection={onJumpToSection}
+        sections={sections}
+      />
     </div>
   );
 }
@@ -961,6 +1312,7 @@ export function RosterApp({
   const [isUploading, setIsUploading] = useState(false);
   const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval | null>(null);
   const [isBirrAdjustmentOpen, setIsBirrAdjustmentOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [conditionModifierModalState, setConditionModifierModalState] =
     useState<ConditionModifierModalState | null>(null);
   const latestIssuedSkillRequestIds = useRef<Record<string, number>>({});
@@ -1128,6 +1480,28 @@ export function RosterApp({
     setIsBirrAdjustmentOpen(false);
     setConditionModifierModalState(null);
   }, [selectedCharacter]);
+
+  useEffect(() => {
+    if (!isMobileMenuOpen) {
+      return;
+    }
+
+    function handleResize() {
+      if (window.innerWidth >= 1024) {
+        setIsMobileMenuOpen(false);
+      }
+    }
+
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [isMobileMenuOpen]);
+
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     if (!isTeamSelected) {
@@ -1646,6 +2020,24 @@ export function RosterApp({
   const activeTeamNavSection =
     teamQuickNavSections.find((section) => section.id === activeTeamSectionId) ??
     teamQuickNavSections[0];
+  const currentLanguage = (i18n.resolvedLanguage ??
+    i18n.language ??
+    defaultLanguage) as AppLanguage;
+  const quickNavAriaLabel = lt("Quick navigation", "Швидка навігація");
+  const characterQuickNavDescription = lt(
+    "Jump straight to the part of the dossier you need.",
+    "Переходьте одразу до потрібної частини досьє.",
+  );
+  const teamQuickNavDescription = lt(
+    "Jump straight to the part of the crew dossier you need.",
+    "Переходьте одразу до потрібної частини досьє екіпажу.",
+  );
+  const mobileMenuDescription = isTeamSelected
+    ? teamQuickNavDescription
+    : characterQuickNavDescription;
+  const mobileMenuActiveLabel = isTeamSelected
+    ? activeTeamNavSection.label
+    : activeNavSection.label;
 
   function jumpToSection(sectionId: QuickNavSectionId) {
     const section = document.getElementById(sectionId);
@@ -1687,118 +2079,345 @@ export function RosterApp({
     setNotice(lt("Starter rules guide restored.", "Гід стартових правил відновлено."));
   }
 
+  function closeMobileMenu() {
+    setIsMobileMenuOpen(false);
+  }
+
+  function setAppLanguage(language: AppLanguage) {
+    if (language === currentLanguage) {
+      return;
+    }
+
+    window.localStorage.setItem(languageStorageKey, language);
+    document.documentElement.lang = language;
+    void i18n.changeLanguage(language);
+  }
+
+  function handleCreateCharacter() {
+    runTask(async () => {
+      const created = await createCharacterAction();
+      setCharacters((currentCharacters) => [...currentCharacters, created]);
+      navigateToPanel(created.id);
+    }, lt("New sheet opened.", "Новий аркуш відкрито."));
+  }
+
+  function handleRenameCharacter() {
+    if (!selectedCharacter) {
+      return;
+    }
+
+    const nextName = window.prompt(
+      lt("Rename this sheet", "Перейменувати цей аркуш"),
+      selectedCharacter.name,
+    );
+
+    if (nextName === null) {
+      return;
+    }
+
+    runTask(async () => {
+      const previousName = selectedCharacter.name;
+      const updated = await renameCharacterAction({
+        characterId: selectedCharacter.id,
+        name: nextName,
+      });
+      setCharacters((currentCharacters) =>
+        currentCharacters.map((character) => {
+          if (character.id === updated.id) {
+            return mergeCharacterWithPreservedSkills(character, updated);
+          }
+
+          return {
+            ...character,
+            relationships: character.relationships.map((relationship) =>
+              relationship.targetName === previousName
+                ? { ...relationship, targetName: updated.name }
+                : relationship,
+            ),
+          };
+        }),
+      );
+    }, lt("Sheet renamed.", "Аркуш перейменовано."));
+  }
+
+  function handleDeleteCharacter() {
+    if (!selectedCharacter) {
+      return;
+    }
+
+    requestCharacterDeletion(selectedCharacter);
+  }
+
+  const headerActionButtons = (
+    <>
+      <button
+        type="button"
+        className="coriolis-chip"
+        onClick={handleCreateCharacter}
+      >
+        {t("common.actions.new")}
+      </button>
+      <button
+        type="button"
+        className="coriolis-chip"
+        disabled={!selectedCharacter}
+        onClick={handleRenameCharacter}
+      >
+        {t("common.actions.rename")}
+      </button>
+      <button
+        type="button"
+        className="coriolis-chip coriolis-chip--danger"
+        disabled={!selectedCharacter}
+        onClick={handleDeleteCharacter}
+      >
+        {t("common.actions.delete")}
+      </button>
+      {isStarterRulesHidden ? (
+        <button type="button" className="coriolis-chip" onClick={showStarterRules}>
+          {lt("Show Starter Rules", "Показати стартові правила")}
+        </button>
+      ) : null}
+    </>
+  );
+
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-[var(--night)] text-[var(--ink)]">
       <div className="coriolis-stars pointer-events-none fixed inset-0" />
       <div className="relative mx-auto flex min-h-screen w-full max-w-[1500px] flex-col px-4 pb-14 pt-4 md:px-6 lg:px-8">
-        <header className="sticky top-4 z-30 mb-5 rounded-[1.7rem] border border-[var(--line-strong)] bg-[color:rgba(14,18,29,0.78)] px-4 py-4 shadow-[0_24px_80px_rgba(4,7,13,0.36)] backdrop-blur-xl">
+        <header className="sticky top-4 z-30 mb-5 rounded-[1.7rem] border border-[var(--line-strong)] bg-[color:rgba(14,18,29,0.78)] px-3 py-3 shadow-[0_24px_80px_rgba(4,7,13,0.36)] backdrop-blur-xl sm:px-4 sm:py-4">
           <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-              <div className="space-y-1">
-                <p className="text-[0.72rem] uppercase tracking-[0.34em] text-[var(--ink-faint)]">
+            <div className="flex items-start justify-between gap-3 lg:items-end">
+              <div className="min-w-0 flex-1 space-y-2">
+                <p className="max-w-[12rem] text-[0.62rem] uppercase tracking-[0.32em] text-[var(--ink-faint)] sm:max-w-none sm:text-[0.72rem] sm:tracking-[0.34em]">
                   {lt("Crew & Character Roster", "Реєстр екіпажу й персонажів")}
                 </p>
-                <h1 className="font-display text-3xl uppercase tracking-[0.16em] text-[var(--paper)] md:text-4xl">
+                <h1 className="font-display text-[2.35rem] leading-[0.88] uppercase tracking-[0.12em] text-[var(--paper)] sm:text-[2.8rem] lg:text-4xl lg:tracking-[0.16em]">
                   {lt("Coriolis Dossier", "Досьє Коріоліса")}
                 </h1>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <LanguageSwitcher />
-                <button
-                  type="button"
-                  className="coriolis-chip"
-                  onClick={() => {
-                    runTask(async () => {
-                      const created = await createCharacterAction();
-                      setCharacters((currentCharacters) => [...currentCharacters, created]);
-                      navigateToPanel(created.id);
-                    }, lt("New sheet opened.", "Новий аркуш відкрито."));
-                  }}
-                >
-                  {t("common.actions.new")}
-                </button>
-                <button
-                  type="button"
-                  className="coriolis-chip"
-                  disabled={!selectedCharacter}
-                  onClick={() => {
-                    if (!selectedCharacter) {
-                      return;
-                    }
-
-                    const nextName = window.prompt(
-                      lt("Rename this sheet", "Перейменувати цей аркуш"),
-                      selectedCharacter.name,
-                    );
-
-                    if (nextName === null) {
-                      return;
-                    }
-
-                    runTask(async () => {
-                      const previousName = selectedCharacter.name;
-                      const updated = await renameCharacterAction({
-                        characterId: selectedCharacter.id,
-                        name: nextName,
-                      });
-                      setCharacters((currentCharacters) =>
-                        currentCharacters.map((character) => {
-                          if (character.id === updated.id) {
-                            return mergeCharacterWithPreservedSkills(character, updated);
-                          }
-
-                          return {
-                            ...character,
-                            relationships: character.relationships.map((relationship) =>
-                              relationship.targetName === previousName
-                                ? { ...relationship, targetName: updated.name }
-                                : relationship,
-                            ),
-                          };
-                        }),
-                      );
-                    }, lt("Sheet renamed.", "Аркуш перейменовано."));
-                  }}
-                >
-                  {t("common.actions.rename")}
-                </button>
-                <button
-                  type="button"
-                  className="coriolis-chip coriolis-chip--danger"
-                  disabled={!selectedCharacter}
-                  onClick={() => {
-                    if (!selectedCharacter) {
-                      return;
-                    }
-
-                    requestCharacterDeletion(selectedCharacter);
-                  }}
-                >
-                  {t("common.actions.delete")}
-                </button>
-                {isStarterRulesHidden ? (
+              <Drawer
+                direction="right"
+                open={isMobileMenuOpen}
+                onOpenChange={setIsMobileMenuOpen}
+              >
+                <DrawerTrigger asChild>
                   <button
                     type="button"
-                    className="coriolis-chip"
-                    onClick={showStarterRules}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.05)] text-[var(--paper)] shadow-[inset_0_1px_0_rgba(255,244,217,0.04)] transition hover:border-[var(--line-strong)] hover:bg-[color:rgba(248,238,216,0.08)] lg:hidden"
+                    aria-label={lt("Open navigation drawer", "Відкрити панель навігації")}
                   >
-                    {lt("Show Starter Rules", "Показати стартові правила")}
+                    <svg
+                      aria-hidden="true"
+                      className="h-4 w-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        d="M4 7h16M4 12h16M4 17h16"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeWidth="1.8"
+                      />
+                    </svg>
                   </button>
-                ) : null}
+                </DrawerTrigger>
+                <DrawerContent className="data-[vaul-drawer-direction=right]:w-[min(92vw,24rem)] data-[vaul-drawer-direction=right]:sm:max-w-none border-l border-[var(--line-strong)] bg-[linear-gradient(160deg,rgba(20,29,44,0.98),rgba(8,12,19,0.99)),linear-gradient(120deg,rgba(201,160,80,0.08),transparent_38%)] text-[var(--ink)] shadow-[inset_0_1px_0_rgba(255,244,217,0.06),0_28px_90px_rgba(2,6,12,0.46)] lg:hidden">
+                  <DrawerHeader className="gap-4 border-b border-[rgba(255,244,217,0.08)] px-4 pb-4 pt-5 text-left">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-2">
+                        <p className="text-[0.68rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
+                          {lt("Classic menu", "Класичне меню")}
+                        </p>
+                        <DrawerTitle className="font-display text-[1.9rem] leading-[0.9] uppercase tracking-[0.12em] text-[var(--paper)]">
+                          {lt("Menu", "Меню")}
+                        </DrawerTitle>
+                        <DrawerDescription className="sr-only">
+                          {mobileMenuDescription}
+                        </DrawerDescription>
+                      </div>
+                      <DrawerClose asChild>
+                        <button type="button" className="coriolis-chip px-4 py-2">
+                          {t("common.actions.close")}
+                        </button>
+                      </DrawerClose>
+                    </div>
+                  </DrawerHeader>
+
+                  <div className="flex-1 overflow-y-auto px-4 pb-5 pt-4">
+                    <div className="space-y-4">
+                      <div className="rounded-[1.3rem] border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.04)] p-3">
+                        <p className="mb-3 text-[0.68rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
+                          {t("common.language.label")}
+                        </p>
+                        <div className="space-y-2">
+                          <MobileMenuItem
+                            active={currentLanguage === "en"}
+                            icon="language"
+                            onClick={() => {
+                              closeMobileMenu();
+                              setAppLanguage("en");
+                            }}
+                            title={t("common.language.english")}
+                          />
+                          <MobileMenuItem
+                            active={currentLanguage === "uk"}
+                            icon="language"
+                            onClick={() => {
+                              closeMobileMenu();
+                              setAppLanguage("uk");
+                            }}
+                            title={t("common.language.ukrainian")}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="rounded-[1.3rem] border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.04)] p-3">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <p className="text-[0.68rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
+                            {lt("Actions", "Дії")}
+                          </p>
+                          <p className="text-[0.68rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
+                            {selectedCharacter?.name ?? lt("Team", "Команда")}
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <MobileMenuItem
+                            icon="plus"
+                            onClick={() => {
+                              closeMobileMenu();
+                              handleCreateCharacter();
+                            }}
+                            title={t("common.actions.new")}
+                          />
+                          <MobileMenuItem
+                            icon="edit"
+                            onClick={() => {
+                              closeMobileMenu();
+                              handleRenameCharacter();
+                            }}
+                            title={t("common.actions.rename")}
+                          />
+                          <MobileMenuItem
+                            icon="delete"
+                            onClick={() => {
+                              closeMobileMenu();
+                              handleDeleteCharacter();
+                            }}
+                            title={t("common.actions.delete")}
+                            tone="danger"
+                          />
+                          {isStarterRulesHidden ? (
+                            <MobileMenuItem
+                              icon="book"
+                              onClick={() => {
+                                closeMobileMenu();
+                                showStarterRules();
+                              }}
+                              title={lt("Show Starter Rules", "Показати стартові правила")}
+                            />
+                          ) : null}
+                          <MobileMenuItem
+                            icon="book"
+                            onClick={() => {
+                              closeMobileMenu();
+                              router.push(COMBAT_HREF);
+                            }}
+                            title={t("combat.page.title")}
+                          />
+                          <MobileMenuItem
+                            icon="ship"
+                            onClick={() => {
+                              closeMobileMenu();
+                              router.push(SHIP_COMBAT_HREF);
+                            }}
+                            title={t("common.nav.shipCombat")}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="rounded-[1.3rem] border border-[var(--line-soft)] bg-[color:rgba(248,238,216,0.04)] p-3">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <p className="text-[0.68rem] uppercase tracking-[0.32em] text-[var(--ink-faint)]">
+                            {t("common.quickNav.label")}
+                          </p>
+                          <p className="text-[0.68rem] uppercase tracking-[0.28em] text-[var(--ink-faint)]">
+                            {mobileMenuActiveLabel}
+                          </p>
+                        </div>
+
+                        {selectedCharacter ? (
+                          <div className="space-y-2" aria-label={quickNavAriaLabel}>
+                            {quickNavSections.map((section) => (
+                              <MobileMenuItem
+                                key={section.id}
+                                active={section.id === activeSectionId}
+                                icon={getCharacterMobileMenuIcon(section.id)}
+                                onClick={() => {
+                                  jumpToSection(section.id);
+                                  closeMobileMenu();
+                                }}
+                                title={section.label}
+                              />
+                            ))}
+                          </div>
+                        ) : null}
+
+                        {isTeamSelected ? (
+                          <div className="space-y-2" aria-label={quickNavAriaLabel}>
+                            {teamQuickNavSections.map((section) => (
+                              <MobileMenuItem
+                                key={section.id}
+                                active={section.id === activeTeamSectionId}
+                                icon={getTeamMobileMenuIcon(section.id)}
+                                onClick={() => {
+                                  jumpToTeamSection(section.id);
+                                  closeMobileMenu();
+                                }}
+                                title={section.label}
+                              />
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </DrawerContent>
+              </Drawer>
+              <div className="hidden flex-wrap items-center gap-2 lg:flex">
+                <LanguageSwitcher />
+                {headerActionButtons}
               </div>
             </div>
 
-            <div className="flex gap-2 overflow-x-auto pb-1">
+            <div className="flex gap-2 overflow-x-auto pb-1 pr-4 [scrollbar-width:none]">
               <button
                 type="button"
-                className={`min-w-fit rounded-full border px-4 py-2 text-sm uppercase tracking-[0.18em] transition ${
+                className="min-w-fit rounded-full border border-[var(--gold)] bg-[color:rgba(201,160,80,0.18)] px-3.5 py-2 text-xs uppercase tracking-[0.18em] text-[var(--paper)] transition sm:px-4 sm:text-sm"
+                onClick={() => navigateToPanel(TEAM_PANEL_ID)}
+              >
+                {lt("Team", "Команда")}
+              </button>
+              <button
+                type="button"
+                className="min-w-fit rounded-full border border-[var(--line-soft)] bg-[color:rgba(245,231,204,0.06)] px-3.5 py-2 text-xs uppercase tracking-[0.18em] text-[var(--ink-muted)] transition hover:border-[var(--line-strong)] hover:text-[var(--paper)] sm:px-4 sm:text-sm"
+                onClick={() => router.push(COMBAT_HREF)}
+              >
+                {t("common.nav.combat")}
+              </button>
+            </div>
+
+            <div className="flex gap-2 overflow-x-auto pb-1 pr-4 [scrollbar-width:none]">
+              <button
+                type="button"
+                className={`min-w-fit rounded-full border px-3.5 py-2 text-xs uppercase tracking-[0.18em] transition sm:px-4 sm:text-sm ${
                   isTeamSelected
                     ? "border-[var(--gold)] bg-[color:rgba(201,160,80,0.18)] text-[var(--paper)]"
                     : "border-[var(--line-soft)] bg-[color:rgba(245,231,204,0.06)] text-[var(--ink-muted)] hover:border-[var(--line-strong)] hover:text-[var(--paper)]"
                 }`}
                 onClick={() => navigateToPanel(TEAM_PANEL_ID)}
               >
-                {lt("Team", "Команда")}
+                {t("common.nav.wholeCrew")}
               </button>
               {visibleCharacters.map((character) => {
                 const isActive = character.id === selectedCharacter?.id && !isTeamSelected;
@@ -1807,7 +2426,7 @@ export function RosterApp({
                   <button
                     key={character.id}
                     type="button"
-                    className={`min-w-fit rounded-full border px-4 py-2 text-sm uppercase tracking-[0.18em] transition ${
+                    className={`min-w-fit rounded-full border px-3.5 py-2 text-xs uppercase tracking-[0.18em] transition sm:px-4 sm:text-sm ${
                       isActive
                         ? "border-[var(--gold)] bg-[color:rgba(201,160,80,0.18)] text-[var(--paper)]"
                         : "border-[var(--line-soft)] bg-[color:rgba(245,231,204,0.06)] text-[var(--ink-muted)] hover:border-[var(--line-strong)] hover:text-[var(--paper)]"
@@ -1820,7 +2439,7 @@ export function RosterApp({
               })}
             </div>
 
-            <div className="flex flex-col gap-1 text-sm text-[var(--ink-muted)] md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-col gap-1 text-xs text-[var(--ink-muted)] sm:text-sm md:flex-row md:items-center md:justify-between">
               <p>{notice}</p>
               <p>
                 {isPending || isUploading
@@ -1836,11 +2455,8 @@ export function RosterApp({
               <HeaderQuickNav
                 activeLabel={activeNavSection.label}
                 activeSectionId={activeSectionId}
-                ariaLabel={lt("Quick navigation", "Швидка навігація")}
-                description={lt(
-                  "Jump straight to the part of the dossier you need.",
-                  "Переходьте одразу до потрібної частини досьє.",
-                )}
+                ariaLabel={quickNavAriaLabel}
+                description={characterQuickNavDescription}
                 onJumpToSection={jumpToSection}
                 sections={quickNavSections}
               />
@@ -1850,11 +2466,8 @@ export function RosterApp({
               <HeaderQuickNav
                 activeLabel={activeTeamNavSection.label}
                 activeSectionId={activeTeamSectionId}
-                ariaLabel={lt("Quick navigation", "Швидка навігація")}
-                description={lt(
-                  "Jump straight to the part of the crew dossier you need.",
-                  "Переходьте одразу до потрібної частини досьє екіпажу.",
-                )}
+                ariaLabel={quickNavAriaLabel}
+                description={teamQuickNavDescription}
                 onJumpToSection={jumpToTeamSection}
                 sections={teamQuickNavSections}
               />
