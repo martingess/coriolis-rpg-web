@@ -106,9 +106,6 @@ export function CombatReferencePage({ mode }: CombatReferencePageProps) {
                 <h1 className="font-display text-[2.35rem] leading-[0.88] uppercase tracking-[0.12em] text-[var(--paper)] sm:text-[2.8rem] lg:text-4xl lg:tracking-[0.16em]">
                   {section.title}
                 </h1>
-                <p className="max-w-3xl text-sm leading-6 text-[var(--ink-muted)] sm:text-[0.98rem]">
-                  {t("combat.page.description")}
-                </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <LanguageSwitcher />
