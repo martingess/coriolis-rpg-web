@@ -27,8 +27,8 @@ const resources = {
           showAll: "Show all",
         },
         language: {
-          english: "English",
-          ukrainian: "Ukrainian",
+          english: "ENG",
+          ukrainian: "UA",
           label: "Language",
         },
         nav: {
@@ -266,8 +266,8 @@ const resources = {
           label: "Швидка навігація",
         },
         language: {
-          english: "Англійська",
-          ukrainian: "Українська",
+          english: "ENG",
+          ukrainian: "UA",
           label: "Мова",
         },
         nav: {
