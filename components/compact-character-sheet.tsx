@@ -794,37 +794,68 @@ function CompactGearEditor({
     value: option.value,
     label: lt(option.label, option.label),
   }));
+  const itemTitle = item.name.trim() || lt("Unnamed item", "Предмет без назви");
+  const itemKindLabel = showEncumbrance
+    ? lt("Equipment item", "Предмет спорядження")
+    : lt("Tiny item", "Дрібний предмет");
 
   return (
-    <div className="rounded-[1rem] border border-[rgba(201,160,80,0.14)] bg-[rgba(248,238,216,0.025)] p-3">
-      <div className="mb-3 flex justify-end">
+    <div className="overflow-hidden rounded-[1rem] border border-[rgba(201,160,80,0.14)] bg-[rgba(248,238,216,0.025)]">
+      <div className="flex items-start justify-between gap-3 border-b border-[rgba(201,160,80,0.14)] px-3 py-2.5">
+        <div className="min-w-0">
+          <p className="text-[0.62rem] uppercase tracking-[0.18em] text-[var(--ink-faint)]">
+            {itemKindLabel}
+          </p>
+          <p className="mt-1 truncate text-sm uppercase tracking-[0.08em] text-[var(--paper)]">
+            {itemTitle}
+          </p>
+        </div>
         <PanelActionButton onClick={onDelete}>{lt("Remove", "Прибрати")}</PanelActionButton>
       </div>
-      <SavableTextField label={lt("Item", "Предмет")} value={item.name} onCommit={(value) => onCommit("name", value)} />
-      <div
-        className={`mt-3 grid gap-3 ${
-          showEncumbrance ? "md:grid-cols-[120px_180px_180px]" : "md:grid-cols-[120px_1fr]"
-        }`}
-      >
-        <SavableNumberField label={lt("Quantity", "Кількість")} min={1} max={99} value={item.quantity} onCommit={(value) => onCommit("quantity", value)} />
-        <SavableTextField label={lt("Bonus", "Бонус")} value={item.bonus} onCommit={(value) => onCommit("bonus", value)} />
-        {showEncumbrance ? (
-          <SavableSelectField
-            label={lt("Encumbrance", "Навантаження")}
-            value={String(item.encumbranceUnits)}
-            options={localizedEncumbranceOptions}
-            onCommit={(value) => onCommit("encumbranceUnits", value)}
+      <div className="grid gap-3 p-3 md:p-4">
+        <SavableTextField
+          label={lt("Item", "Предмет")}
+          value={item.name}
+          onCommit={(value) => onCommit("name", value)}
+        />
+        <div
+          className={`grid gap-3 ${
+            showEncumbrance
+              ? "md:grid-cols-[minmax(120px,0.6fr)_minmax(0,1fr)_minmax(180px,0.8fr)]"
+              : "md:grid-cols-[minmax(120px,0.6fr)_minmax(0,1fr)]"
+          }`}
+        >
+          <SavableNumberField
+            label={lt("Quantity", "Кількість")}
+            min={1}
+            max={99}
+            value={item.quantity}
+            onCommit={(value) => onCommit("quantity", value)}
           />
-        ) : null}
+          <SavableTextField
+            label={lt("Bonus", "Бонус")}
+            value={item.bonus}
+            onCommit={(value) => onCommit("bonus", value)}
+          />
+          {showEncumbrance ? (
+            <SavableSelectField
+              label={lt("Encumbrance", "Навантаження")}
+              value={String(item.encumbranceUnits)}
+              options={localizedEncumbranceOptions}
+              onCommit={(value) => onCommit("encumbranceUnits", value)}
+            />
+          ) : null}
+        </div>
+        <div className="border-t border-[rgba(201,160,80,0.1)] pt-3">
+          <SavableTextField
+            label={lt("Comment", "Коментар")}
+            multiline
+            rows={4}
+            value={item.comment}
+            onCommit={(value) => onCommit("comment", value)}
+          />
+        </div>
       </div>
-      <SavableTextField
-        className="mt-3"
-        label={lt("Comment", "Коментар")}
-        multiline
-        rows={3}
-        value={item.comment}
-        onCommit={(value) => onCommit("comment", value)}
-      />
     </div>
   );
 }
