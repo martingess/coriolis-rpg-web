@@ -2,6 +2,8 @@ import { extname } from "node:path";
 
 import { NextResponse } from "next/server";
 
+import { getCurrentUser } from "@/lib/auth";
+import { logMutation } from "@/lib/audit-log";
 import { prisma } from "@/lib/prisma";
 import { updatePortraitPath } from "@/lib/roster";
 
@@ -62,6 +64,25 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    await logMutation({
+      action: "character.portrait.update.denied",
+      actorUsername: "anonymous",
+      entityType: "character",
+      metadata: { reason: "unauthenticated" },
+      summary: "Blocked anonymous attempt to update a character portrait.",
+      userId: null,
+    });
+    return NextResponse.json(
+      {
+        error: "Authentication required.",
+      },
+      { status: 401 },
+    );
+  }
+
   const { id } = await context.params;
   const existing = await prisma.character.findUnique({
     where: {
@@ -102,22 +123,51 @@ export async function POST(
   const data = Buffer.from(await file.arrayBuffer());
   const portraitPath = `/api/characters/${id}/portrait?v=${Date.now()}`;
 
-  await prisma.characterPortrait.upsert({
-    where: {
-      characterId: id,
-    },
-    create: {
-      characterId: id,
-      data,
-      mimeType,
-    },
-    update: {
-      data,
-      mimeType,
-    },
-  });
+  try {
+    const character = await prisma.$transaction(async (tx) => {
+      await tx.characterPortrait.upsert({
+        where: {
+          characterId: id,
+        },
+        create: {
+          characterId: id,
+          data,
+          mimeType,
+        },
+        update: {
+          data,
+          mimeType,
+        },
+      });
 
-  const character = await updatePortraitPath(id, portraitPath);
+      const updatedCharacter = await updatePortraitPath(id, portraitPath, tx);
+      await logMutation({
+        action: "character.portrait.update",
+        db: tx,
+        entityId: id,
+        entityType: "character",
+        metadata: { characterId: id, mimeType },
+        summary: `Updated portrait for character ${id}.`,
+        userId: user.id,
+      });
 
-  return NextResponse.json({ character });
+      return updatedCharacter;
+    });
+
+    return NextResponse.json({ character });
+  } catch (error) {
+    await logMutation({
+      action: "character.portrait.update.failed",
+      actorUsername: user.username,
+      entityId: id,
+      entityType: "character",
+      metadata: {
+        characterId: id,
+        error: error instanceof Error ? error.message : "unknown-error",
+      },
+      summary: `Failed to update portrait for character ${id}.`,
+      userId: user.id,
+    });
+    throw error;
+  }
 }

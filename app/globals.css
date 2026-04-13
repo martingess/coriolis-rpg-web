@@ -1122,3 +1122,464 @@ select {
   background: rgba(248, 238, 216, 0.05);
   color: var(--ink-faint);
 }
+
+.coriolis-compact-section {
+  overflow: hidden;
+}
+
+.coriolis-compact-section__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid rgba(201, 160, 80, 0.18);
+  padding: 1rem 1rem 0.95rem;
+  background:
+    linear-gradient(90deg, rgba(201, 160, 80, 0.08), transparent 35%),
+    rgba(248, 238, 216, 0.025);
+}
+
+.coriolis-compact-section__eyebrow {
+  font-size: 0.68rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.coriolis-compact-section__title {
+  font-family: var(--font-marcellus), serif;
+  font-size: 1.4rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--paper);
+}
+
+.coriolis-compact-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid rgba(201, 160, 80, 0.18);
+  background: rgba(248, 238, 216, 0.02);
+}
+
+.coriolis-compact-table th,
+.coriolis-compact-table td {
+  border: 1px solid rgba(201, 160, 80, 0.15);
+  padding: 0.75rem 0.85rem;
+  vertical-align: top;
+  word-break: normal;
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+
+.coriolis-compact-table th {
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-align: left;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  background: rgba(201, 160, 80, 0.08);
+}
+
+.coriolis-compact-table td {
+  font-size: 0.94rem;
+  line-height: 1.55;
+  color: var(--paper);
+}
+
+.coriolis-compact-table tbody tr:nth-child(even) td {
+  background: rgba(248, 238, 216, 0.025);
+}
+
+.coriolis-compact-table--dense th,
+.coriolis-compact-table--dense td {
+  padding: 0.55rem 0.65rem;
+  font-size: 0.82rem;
+}
+
+.coriolis-compact-table--dense th {
+  letter-spacing: 0.14em;
+}
+
+.coriolis-compact-table__empty {
+  text-align: center;
+  color: var(--ink-muted);
+}
+
+.coriolis-compact-pips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.38rem;
+}
+
+.coriolis-compact-pip {
+  height: 0.82rem;
+  width: 0.82rem;
+  border-radius: 999px;
+  border: 1px solid rgba(201, 160, 80, 0.28);
+  background: rgba(248, 238, 216, 0.04);
+  box-shadow: inset 0 1px 0 rgba(255, 244, 217, 0.04);
+}
+
+.coriolis-compact-pip--filled {
+  border-color: rgba(201, 160, 80, 0.6);
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255, 245, 214, 0.78), transparent 50%),
+    linear-gradient(180deg, rgba(201, 160, 80, 0.95), rgba(152, 114, 36, 0.9));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 249, 230, 0.2),
+    0 0 10px rgba(201, 160, 80, 0.18);
+}
+
+.coriolis-compact-note {
+  height: 100%;
+  border: 1px solid rgba(201, 160, 80, 0.15);
+  border-radius: 1.15rem;
+  background: rgba(248, 238, 216, 0.035);
+  padding: 1rem;
+}
+
+.coriolis-compact-note__label {
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.coriolis-sheet-board {
+  position: relative;
+  border: 1px solid rgba(201, 160, 80, 0.16);
+  border-radius: 1.6rem;
+  padding: 0;
+  background:
+    linear-gradient(180deg, rgba(248, 238, 216, 0.04), rgba(248, 238, 216, 0.018)),
+    linear-gradient(135deg, rgba(201, 160, 80, 0.04), transparent 22%),
+    rgba(7, 10, 18, 0.92);
+  box-shadow:
+    0 30px 90px rgba(4, 7, 13, 0.34),
+    inset 0 1px 0 rgba(255, 246, 226, 0.04);
+}
+
+.coriolis-sheet-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.85rem;
+}
+
+.coriolis-sheet-panel {
+  overflow: hidden;
+  border: 1px solid rgba(201, 160, 80, 0.16);
+  border-radius: 0.5rem;
+  background:
+    linear-gradient(180deg, rgba(248, 238, 216, 0.03), rgba(248, 238, 216, 0.01)),
+    rgba(8, 11, 18, 0.86);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 244, 217, 0.035),
+    0 14px 36px rgba(4, 7, 13, 0.18);
+}
+
+.coriolis-sheet-panel__header {
+  display: flex;
+  align-items: center;
+  min-height: 2.25rem;
+  padding: 0.5rem 0.8rem;
+  border-bottom: 1px solid rgba(201, 160, 80, 0.18);
+  background:
+    linear-gradient(90deg, rgba(201, 160, 80, 0.14), rgba(201, 160, 80, 0.03) 28%, transparent 100%),
+    rgba(248, 238, 216, 0.025);
+}
+
+.coriolis-sheet-panel__title {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--paper);
+}
+
+.coriolis-sheet-panel__body {
+  padding: 0;
+}
+
+.coriolis-sheet-field-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.coriolis-appearance-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.coriolis-appearance-grid__full {
+  grid-column: 1;
+}
+
+.coriolis-sheet-field {
+  border: 1px solid rgba(201, 160, 80, 0.12);
+  background:
+    linear-gradient(180deg, rgba(248, 238, 216, 0.035), rgba(248, 238, 216, 0.02)),
+    rgba(6, 9, 15, 0.5);
+  padding: 0.68rem 0.72rem 0.72rem;
+}
+
+.coriolis-sheet-field__label {
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.coriolis-sheet-field__value {
+  margin-top: 0.38rem;
+  min-height: 1.5rem;
+  font-size: 0.94rem;
+  line-height: 1.45;
+  color: var(--paper);
+}
+
+.coriolis-sheet-stack {
+  display: grid;
+  gap: 0;
+}
+
+.coriolis-sheet-stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  border: 1px solid rgba(201, 160, 80, 0.12);
+  background:
+    linear-gradient(180deg, rgba(248, 238, 216, 0.03), rgba(248, 238, 216, 0.016)),
+    rgba(6, 9, 15, 0.48);
+  padding: 0.65rem 0.75rem;
+}
+
+.coriolis-sheet-pip-row {
+  padding: 0.8rem 0.95rem 0.95rem;
+  border-left: 1px solid rgba(201, 160, 80, 0.12);
+  border-right: 1px solid rgba(201, 160, 80, 0.12);
+  border-bottom: 1px solid rgba(201, 160, 80, 0.12);
+  background:
+    linear-gradient(180deg, rgba(248, 238, 216, 0.02), rgba(248, 238, 216, 0.012)),
+    rgba(6, 9, 15, 0.38);
+}
+
+.coriolis-sheet-panel--conditions .coriolis-sheet-field,
+.coriolis-sheet-panel--conditions .coriolis-sheet-track {
+  border-left: 1px solid rgba(201, 160, 80, 0.12);
+  border-right: 1px solid rgba(201, 160, 80, 0.12);
+}
+
+.coriolis-sheet-panel--conditions .coriolis-sheet-field + .coriolis-sheet-track,
+.coriolis-sheet-panel--conditions .coriolis-sheet-pip-row + .coriolis-sheet-field,
+.coriolis-sheet-panel--conditions .coriolis-sheet-pip-row + .coriolis-sheet-track {
+  border-top: 0;
+}
+
+.coriolis-sheet-panel .overflow-x-auto {
+  border: 1px solid rgba(201, 160, 80, 0.12);
+}
+
+.coriolis-sheet-panel .coriolis-compact-table {
+  border: 0;
+  background: transparent;
+}
+
+.coriolis-sheet-panel .coriolis-compact-table th {
+  background: rgba(201, 160, 80, 0.09);
+}
+
+.coriolis-sheet-panel .coriolis-compact-table tbody tr:nth-child(even) td {
+  background: rgba(248, 238, 216, 0.016);
+}
+
+.coriolis-skill-groups {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.coriolis-skill-group {
+  overflow: hidden;
+}
+
+.coriolis-skill-group__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  padding: 0.8rem;
+  border-bottom: 1px solid rgba(201, 160, 80, 0.14);
+  background:
+    linear-gradient(90deg, rgba(201, 160, 80, 0.11), rgba(201, 160, 80, 0.03) 34%, transparent),
+    rgba(248, 238, 216, 0.018);
+}
+
+.coriolis-skill-group__title {
+  margin-top: 0.18rem;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--paper);
+}
+
+.coriolis-skill-group__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.coriolis-skill-group__value {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--paper);
+}
+
+.coriolis-sheet-panel--skills .coriolis-sheet-panel__body {
+  padding: 0;
+}
+
+.coriolis-sheet-panel--skills .coriolis-skill-groups {
+  gap: 0.9rem;
+}
+
+.coriolis-sheet-panel--skills .coriolis-skill-group {
+  border: 0;
+  background: transparent;
+}
+
+.coriolis-sheet-panel--skills .coriolis-skill-group + .coriolis-skill-group {
+  border-top: 0;
+}
+
+.coriolis-sheet-panel--skills .coriolis-skill-group__header {
+  padding: 0.85rem 0.95rem;
+  border-bottom: 1px solid rgba(201, 160, 80, 0.12);
+  background:
+    linear-gradient(90deg, rgba(201, 160, 80, 0.1), rgba(201, 160, 80, 0.025) 42%, transparent),
+    rgba(248, 238, 216, 0.014);
+}
+
+.coriolis-sheet-panel--skills .coriolis-skill-group .overflow-x-auto {
+  border: 0;
+}
+
+.coriolis-sheet-panel--skills .coriolis-skill-group .coriolis-compact-table {
+  border-top: 0;
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.coriolis-sheet-panel--skills .coriolis-skill-group:last-child .coriolis-compact-table {
+  border-bottom: 0;
+}
+
+.coriolis-sheet-panel--skills .coriolis-skill-group .coriolis-compact-table th:first-child,
+.coriolis-sheet-panel--skills .coriolis-skill-group .coriolis-compact-table td:first-child {
+  border-left: 0;
+}
+
+.coriolis-sheet-panel--skills .coriolis-skill-group .coriolis-compact-table th:last-child,
+.coriolis-sheet-panel--skills .coriolis-skill-group .coriolis-compact-table td:last-child {
+  border-right: 0;
+}
+
+.coriolis-skill-table th:last-child,
+.coriolis-skill-table td:last-child {
+  width: 8.75rem;
+  white-space: nowrap;
+}
+
+.coriolis-passport-layout {
+  display: grid;
+  gap: 0;
+}
+
+.coriolis-passport-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.coriolis-passport-grid--meta {
+  grid-auto-flow: row dense;
+}
+
+.coriolis-passport-field--wide {
+  grid-column: 1 / -1;
+}
+
+.coriolis-passport-grid .coriolis-sheet-field {
+  padding: 0.58rem 0.68rem 0.62rem;
+}
+
+.coriolis-passport-grid .coriolis-sheet-field__value {
+  min-height: 0;
+}
+
+.coriolis-passport-field--description .coriolis-sheet-field__value {
+  max-height: 8.5rem;
+  overflow: auto;
+  scrollbar-width: thin;
+  line-height: 1.6;
+}
+
+@media (min-width: 768px) {
+  .coriolis-sheet-board {
+    padding: 1.15rem;
+  }
+
+  .coriolis-sheet-grid {
+    gap: 1rem;
+  }
+
+  .coriolis-appearance-grid {
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  }
+
+  .coriolis-appearance-grid__full {
+    grid-column: 1 / -1;
+  }
+
+  .coriolis-passport-grid--meta {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .coriolis-passport-grid--meta .coriolis-passport-field--wide {
+    grid-column: span 2 / span 2;
+  }
+
+  .coriolis-passport-grid--appearance {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  }
+
+  .coriolis-passport-grid--notes {
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.25fr);
+  }
+
+  .coriolis-skill-groups {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .coriolis-sheet-board {
+    padding: 1.25rem;
+  }
+
+  .coriolis-sheet-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .coriolis-passport-grid--appearance {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  }
+
+  .coriolis-passport-field--description .coriolis-sheet-field__value {
+    max-height: 7.5rem;
+  }
+}

@@ -1,7 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { type Prisma } from "@prisma/client";
 
+import { getCurrentUser, type SessionUser } from "@/lib/auth";
+import { logMutation } from "@/lib/audit-log";
+import { prisma } from "@/lib/prisma";
 import {
   addInventoryPreset,
   createConditionModifier,
@@ -33,25 +37,112 @@ import type {
   TeamScalarField,
 } from "@/lib/team-types";
 
+type MutationMetadata = Record<string, number | string | null | undefined>;
+type CreateCharacterResult = Awaited<ReturnType<typeof createCharacter>>;
+
+async function runAuthorizedMutation<T>(input: {
+  action: string;
+  entityId?: string | ((result: T) => string | null | undefined);
+  entityType: string;
+  metadata?: MutationMetadata;
+  summary: string | ((user: SessionUser, result: T) => string);
+  task: (
+    user: SessionUser,
+    db: Prisma.TransactionClient,
+  ) => Promise<T>;
+}) {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    await logMutation({
+      action: `${input.action}.denied`,
+      actorUsername: "anonymous",
+      entityType: input.entityType,
+      metadata: {
+        ...(input.metadata ?? {}),
+        reason: "unauthenticated",
+      },
+      summary: `Blocked anonymous attempt to ${input.action}.`,
+      userId: null,
+    });
+    throw new Error("Authentication required. Please log in.");
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const mutationResult = await input.task(user, tx);
+      const entityId =
+        typeof input.entityId === "function" ? input.entityId(mutationResult) : input.entityId;
+      const summary =
+        typeof input.summary === "function"
+          ? input.summary(user, mutationResult)
+          : input.summary;
+
+      await logMutation({
+        action: input.action,
+        db: tx,
+        entityId,
+        entityType: input.entityType,
+        metadata: input.metadata,
+        summary,
+        userId: user.id,
+      });
+
+      return mutationResult;
+    });
+
+    revalidatePath("/");
+    return result;
+  } catch (error) {
+    await logMutation({
+      action: `${input.action}.failed`,
+      actorUsername: user.username,
+      entityId: typeof input.entityId === "string" ? input.entityId : null,
+      entityType: input.entityType,
+      metadata: {
+        ...(input.metadata ?? {}),
+        error: error instanceof Error ? error.message : "unknown-error",
+      },
+      summary: `Failed to execute ${input.action}.`,
+      userId: user.id,
+    });
+    throw error;
+  }
+}
+
 export async function createCharacterAction() {
-  const character = await createCharacter();
-  revalidatePath("/");
-  return character;
+  return runAuthorizedMutation<CreateCharacterResult>({
+    action: "character.create",
+    entityId: (character) => character.id,
+    entityType: "character",
+    summary: (_user, character) => `Created character ${character.name}.`,
+    task: async (_user, db) => createCharacter(db),
+  });
 }
 
 export async function renameCharacterAction(input: {
   characterId: string;
   name: string;
 }) {
-  const character = await renameCharacter(input.characterId, input.name);
-  revalidatePath("/");
-  return character;
+  return runAuthorizedMutation({
+    action: "character.rename",
+    entityId: input.characterId,
+    entityType: "character",
+    metadata: { characterId: input.characterId, name: input.name },
+    summary: `Renamed character ${input.characterId}.`,
+    task: async (_user, db) => renameCharacter(input.characterId, input.name, db),
+  });
 }
 
 export async function deleteCharacterAction(characterId: string) {
-  const characters = await deleteCharacter(characterId);
-  revalidatePath("/");
-  return characters;
+  return runAuthorizedMutation({
+    action: "character.delete",
+    entityId: characterId,
+    entityType: "character",
+    metadata: { characterId },
+    summary: `Deleted character ${characterId}.`,
+    task: async (_user, db) => deleteCharacter(characterId, db),
+  });
 }
 
 export async function updateCharacterFieldAction(input: {
@@ -59,9 +150,19 @@ export async function updateCharacterFieldAction(input: {
   field: CharacterScalarField;
   value: number | string;
 }) {
-  const character = await updateCharacterField(input.characterId, input.field, input.value);
-  revalidatePath("/");
-  return character;
+  return runAuthorizedMutation({
+    action: "character.field.update",
+    entityId: input.characterId,
+    entityType: "character",
+    metadata: {
+      characterId: input.characterId,
+      field: input.field,
+      value: String(input.value),
+    },
+    summary: `Updated ${input.field} on character ${input.characterId}.`,
+    task: async (_user, db) =>
+      updateCharacterField(input.characterId, input.field, input.value, db),
+  });
 }
 
 export async function createConditionModifierAction(input: {
@@ -71,9 +172,18 @@ export async function createConditionModifierAction(input: {
   target: string;
   value: number | string;
 }) {
-  const character = await createConditionModifier(input);
-  revalidatePath("/");
-  return character;
+  return runAuthorizedMutation({
+    action: "condition-modifier.create",
+    entityId: input.characterId,
+    entityType: "character",
+    metadata: {
+      characterId: input.characterId,
+      target: input.target,
+      value: String(input.value),
+    },
+    summary: `Added condition modifier on ${input.target} for character ${input.characterId}.`,
+    task: async (_user, db) => createConditionModifier(input, db),
+  });
 }
 
 export async function updateConditionModifierAction(input: {
@@ -83,15 +193,25 @@ export async function updateConditionModifierAction(input: {
   target: string;
   value: number | string;
 }) {
-  const character = await updateConditionModifier(input.id, input);
-  revalidatePath("/");
-  return character;
+  return runAuthorizedMutation({
+    action: "condition-modifier.update",
+    entityId: input.id,
+    entityType: "conditionModifier",
+    metadata: { modifierId: input.id, target: input.target, value: String(input.value) },
+    summary: `Updated condition modifier ${input.id}.`,
+    task: async (_user, db) => updateConditionModifier(input.id, input, db),
+  });
 }
 
 export async function deleteConditionModifierAction(id: string) {
-  const character = await deleteConditionModifier(id);
-  revalidatePath("/");
-  return character;
+  return runAuthorizedMutation({
+    action: "condition-modifier.delete",
+    entityId: id,
+    entityType: "conditionModifier",
+    metadata: { modifierId: id },
+    summary: `Deleted condition modifier ${id}.`,
+    task: async (_user, db) => deleteConditionModifier(id, db),
+  });
 }
 
 export async function createRepeaterItemAction(input: {
@@ -99,11 +219,21 @@ export async function createRepeaterItemAction(input: {
   kind: Extract<RepeaterKind, "relationship" | "talent" | "contact">;
   relationshipTargetName?: string;
 }) {
-  const character = await createRepeaterItem(input.characterId, input.kind, {
-    relationshipTargetName: input.relationshipTargetName,
+  return runAuthorizedMutation({
+    action: `${input.kind}.create`,
+    entityId: input.characterId,
+    entityType: "character",
+    metadata: {
+      characterId: input.characterId,
+      kind: input.kind,
+      relationshipTargetName: input.relationshipTargetName,
+    },
+    summary: `Created ${input.kind} row for character ${input.characterId}.`,
+    task: async (_user, db) =>
+      createRepeaterItem(input.characterId, input.kind, {
+        relationshipTargetName: input.relationshipTargetName,
+      }, db),
   });
-  revalidatePath("/");
-  return character;
 }
 
 export async function addInventoryPresetAction(input: {
@@ -111,9 +241,19 @@ export async function addInventoryPresetAction(input: {
   kind: InventoryKind;
   presetId: string;
 }) {
-  const character = await addInventoryPreset(input.characterId, input.kind, input.presetId);
-  revalidatePath("/");
-  return character;
+  return runAuthorizedMutation({
+    action: "inventory.preset.add",
+    entityId: input.characterId,
+    entityType: "character",
+    metadata: {
+      characterId: input.characterId,
+      kind: input.kind,
+      presetId: input.presetId,
+    },
+    summary: `Added ${input.kind} preset ${input.presetId} to character ${input.characterId}.`,
+    task: async (_user, db) =>
+      addInventoryPreset(input.characterId, input.kind, input.presetId, db),
+  });
 }
 
 export async function updateRepeaterFieldAction(input: {
@@ -122,32 +262,48 @@ export async function updateRepeaterFieldAction(input: {
   field: string;
   value: number | string;
 }) {
-  const character = await updateRepeaterField(
-    input.kind,
-    input.id,
-    input.field,
-    input.value,
-  );
-  revalidatePath("/");
-  return character;
+  return runAuthorizedMutation({
+    action: `${input.kind}.update`,
+    entityId: input.id,
+    entityType: input.kind,
+    metadata: {
+      repeaterId: input.id,
+      kind: input.kind,
+      field: input.field,
+      value: String(input.value),
+    },
+    summary: `Updated ${input.field} on ${input.kind} ${input.id}.`,
+    task: async (_user, db) =>
+      updateRepeaterField(input.kind, input.id, input.field, input.value, db),
+  });
 }
 
 export async function deleteRepeaterItemAction(input: {
   kind: RepeaterKind;
   id: string;
 }) {
-  const character = await deleteRepeaterItem(input.kind, input.id);
-  revalidatePath("/");
-  return character;
+  return runAuthorizedMutation({
+    action: `${input.kind}.delete`,
+    entityId: input.id,
+    entityType: input.kind,
+    metadata: { kind: input.kind, repeaterId: input.id },
+    summary: `Deleted ${input.kind} ${input.id}.`,
+    task: async (_user, db) => deleteRepeaterItem(input.kind, input.id, db),
+  });
 }
 
 export async function setBuddyAction(input: {
   characterId: string;
   relationshipId: string;
 }) {
-  const character = await setBuddy(input.characterId, input.relationshipId);
-  revalidatePath("/");
-  return character;
+  return runAuthorizedMutation({
+    action: "relationship.set-buddy",
+    entityId: input.relationshipId,
+    entityType: "relationship",
+    metadata: { characterId: input.characterId, relationshipId: input.relationshipId },
+    summary: `Updated buddy relationship ${input.relationshipId}.`,
+    task: async (_user, db) => setBuddy(input.characterId, input.relationshipId, db),
+  });
 }
 
 export async function updateTeamFieldAction(input: {
@@ -155,9 +311,14 @@ export async function updateTeamFieldAction(input: {
   field: TeamScalarField;
   value: number | string;
 }) {
-  const team = await updateTeamField(input.teamId, input.field, input.value);
-  revalidatePath("/");
-  return team;
+  return runAuthorizedMutation({
+    action: "team.field.update",
+    entityId: input.teamId,
+    entityType: "team",
+    metadata: { teamId: input.teamId, field: input.field, value: String(input.value) },
+    summary: `Updated ${input.field} on team ${input.teamId}.`,
+    task: async (_user, db) => updateTeamField(input.teamId, input.field, input.value, db),
+  });
 }
 
 export async function createTeamRepeaterItemAction(input: {
@@ -165,11 +326,21 @@ export async function createTeamRepeaterItemAction(input: {
   kind: Exclude<TeamRepeaterKind, "crewPosition">;
   parentBeatId?: string | null;
 }) {
-  const team = await createTeamRepeaterItem(input.teamId, input.kind, {
-    parentBeatId: input.parentBeatId,
+  return runAuthorizedMutation({
+    action: `team.${input.kind}.create`,
+    entityId: input.teamId,
+    entityType: "team",
+    metadata: {
+      teamId: input.teamId,
+      kind: input.kind,
+      parentBeatId: input.parentBeatId ?? null,
+    },
+    summary: `Created ${input.kind} row for team ${input.teamId}.`,
+    task: async (_user, db) =>
+      createTeamRepeaterItem(input.teamId, input.kind, {
+        parentBeatId: input.parentBeatId,
+      }, db),
   });
-  revalidatePath("/");
-  return team;
 }
 
 export async function updateTeamRepeaterFieldAction(input: {
@@ -178,27 +349,43 @@ export async function updateTeamRepeaterFieldAction(input: {
   field: string;
   value: number | string;
 }) {
-  const team = await updateTeamRepeaterField(
-    input.kind,
-    input.id,
-    input.field,
-    input.value,
-  );
-  revalidatePath("/");
-  return team;
+  return runAuthorizedMutation({
+    action: `team.${input.kind}.update`,
+    entityId: input.id,
+    entityType: input.kind,
+    metadata: {
+      kind: input.kind,
+      repeaterId: input.id,
+      field: input.field,
+      value: String(input.value),
+    },
+    summary: `Updated ${input.field} on team ${input.kind} ${input.id}.`,
+    task: async (_user, db) =>
+      updateTeamRepeaterField(input.kind, input.id, input.field, input.value, db),
+  });
 }
 
 export async function deleteTeamRepeaterItemAction(input: {
   kind: Exclude<TeamRepeaterKind, "crewPosition">;
   id: string;
 }) {
-  const team = await deleteTeamRepeaterItem(input.kind, input.id);
-  revalidatePath("/");
-  return team;
+  return runAuthorizedMutation({
+    action: `team.${input.kind}.delete`,
+    entityId: input.id,
+    entityType: input.kind,
+    metadata: { kind: input.kind, repeaterId: input.id },
+    summary: `Deleted team ${input.kind} ${input.id}.`,
+    task: async (_user, db) => deleteTeamRepeaterItem(input.kind, input.id, db),
+  });
 }
 
 export async function promoteKnownFaceToCharacterAction(knownFaceId: string) {
-  const result = await promoteKnownFaceToCharacter(knownFaceId);
-  revalidatePath("/");
-  return result;
+  return runAuthorizedMutation({
+    action: "team.known-face.promote",
+    entityId: knownFaceId,
+    entityType: "knownFace",
+    metadata: { knownFaceId },
+    summary: `Promoted known face ${knownFaceId} to a character.`,
+    task: async (_user, db) => promoteKnownFaceToCharacter(knownFaceId, db),
+  });
 }

@@ -145,7 +145,8 @@ describe("roster behavior aligned with the rulebook", () => {
       expect(cappedRadiation.radiation).toBe(3);
 
       const radiationModifierId = withRadiationModifier.conditionModifiers.find(
-        (modifier) => modifier.target === "radiation",
+        (modifier: (typeof withRadiationModifier.conditionModifiers)[number]) =>
+          modifier.target === "radiation",
       )?.id;
 
       if (!radiationModifierId) {

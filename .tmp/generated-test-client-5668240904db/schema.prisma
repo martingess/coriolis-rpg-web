@@ -1,0 +1,384 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated-client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum TalentSource {
+  group
+  concept
+  icon
+  other
+}
+
+enum OriginCulture {
+  firstcome
+  zenithian
+}
+
+enum OriginSystem {
+  algol
+  mira
+  kua
+  dabaran
+  zalos
+  other
+}
+
+enum Upbringing {
+  plebeian
+  stationary
+  privileged
+}
+
+enum TeamNoteTag {
+  mission
+  npc
+  faction
+  ship
+  mystery
+  debt
+  session
+}
+
+enum TeamFactionStance {
+  ally
+  neutral
+  enemy
+}
+
+enum TeamCrewRole {
+  captain
+  engineer
+  pilot
+  sensorOperator
+  gunner
+}
+
+enum ConditionModifierTarget {
+  hitPoints
+  mindPoints
+  radiation
+}
+
+model User {
+  id           String     @id @default(cuid())
+  username     String     @unique
+  passwordHash String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  auditLogs    AuditLog[]
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  userId        String?
+  actorUsername String
+  action        String
+  entityType    String
+  entityId      String?
+  summary       String
+  metadata      Json?
+  createdAt     DateTime @default(now())
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@index([entityType, entityId])
+}
+
+model Character {
+  id                 String                       @id @default(cuid())
+  name               String
+  description        String                       @default("")
+  background         String                       @default("")
+  originCulture      OriginCulture?
+  originSystem       OriginSystem?
+  upbringing         Upbringing?
+  concept            String                       @default("")
+  groupConcept       String                       @default("")
+  icon               String                       @default("")
+  reputation         Int                          @default(0)
+  personalProblem    String                       @default("")
+  face               String                       @default("")
+  clothing           String                       @default("")
+  portraitPath       String?
+  portraitAsset      CharacterPortrait?
+  strength           Int                          @default(2)
+  agility            Int                          @default(2)
+  wits               Int                          @default(2)
+  empathy            Int                          @default(2)
+  maxHitPoints       Int                          @default(4)
+  currentHitPoints   Int                          @default(4)
+  maxMindPoints      Int                          @default(4)
+  currentMindPoints  Int                          @default(4)
+  maxRadiation       Int                          @default(10)
+  radiation          Int                          @default(0)
+  experience         Int                          @default(0)
+  criticalInjuries   String                       @default("")
+  notes              String                       @default("")
+  myCabinDescription String                       @default("")
+  myCabinGear        String                       @default("")
+  myCabinOther       String                       @default("")
+  birr               Int                          @default(0)
+  armorName          String                       @default("")
+  armorRating        Int                          @default(0)
+  armorComment       String                       @default("")
+  dexterity          Int                          @default(0)
+  force              Int                          @default(0)
+  infiltration       Int                          @default(0)
+  manipulation       Int                          @default(0)
+  meleeCombat        Int                          @default(0)
+  observation        Int                          @default(0)
+  rangedCombat       Int                          @default(0)
+  survival           Int                          @default(0)
+  command            Int                          @default(0)
+  culture            Int                          @default(0)
+  dataDjinn          Int                          @default(0)
+  medicurgy          Int                          @default(0)
+  mysticPowers       Int                          @default(0)
+  pilot              Int                          @default(0)
+  science            Int                          @default(0)
+  technology         Int                          @default(0)
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  contacts           CharacterContact[]
+  gearItems          CharacterGearItem[]
+  primaryCrewRoles   TeamCrewPosition[]           @relation("PrimaryCrewPosition")
+  backupCrewRoles    TeamCrewPosition[]           @relation("BackupCrewPosition")
+  promotedKnownFaces TeamKnownFace[]              @relation("PromotedKnownFace")
+  relationships      CharacterRelationship[]
+  conditionModifiers CharacterConditionModifier[]
+  talents            CharacterTalent[]
+  weapons            CharacterWeapon[]
+}
+
+model CharacterConditionModifier {
+  id          String                  @id @default(cuid())
+  characterId String
+  order       Int
+  target      ConditionModifierTarget
+  name        String                  @default("")
+  description String                  @default("")
+  value       Int                     @default(0)
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  character   Character               @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@index([characterId, order])
+}
+
+model CharacterPortrait {
+  characterId String    @id
+  mimeType    String
+  data        Bytes
+  updatedAt   DateTime  @updatedAt
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+}
+
+model Team {
+  id                String             @id @default(cuid())
+  name              String             @default("Bridge Dossier")
+  manifesto         String             @default("")
+  story             String             @default("")
+  groupConcept      String             @default("")
+  groupTalent       String             @default("")
+  patron            String             @default("")
+  nemesis           String             @default("")
+  shipName          String             @default("")
+  shipType          String             @default("")
+  shipClass         String             @default("")
+  shipProblem       String             @default("")
+  shipDebt          Int                @default(0)
+  shipUpgrades      String             @default("")
+  currentGoal       String             @default("")
+  nextLead          String             @default("")
+  reward            String             @default("")
+  deadline          String             @default("")
+  unresolvedMystery String             @default("")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  crewPositions     TeamCrewPosition[]
+  factionTies       TeamFactionTie[]
+  knownFaces        TeamKnownFace[]
+  notes             TeamNote[]
+  storyBeats        TeamStoryBeat[]
+}
+
+model TeamCrewPosition {
+  id                 String       @id @default(cuid())
+  teamId             String
+  order              Int
+  role               TeamCrewRole
+  primaryCharacterId String?
+  backupCharacterId  String?
+  notes              String       @default("")
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  backupCharacter    Character?   @relation("BackupCrewPosition", fields: [backupCharacterId], references: [id], onDelete: SetNull)
+  primaryCharacter   Character?   @relation("PrimaryCrewPosition", fields: [primaryCharacterId], references: [id], onDelete: SetNull)
+  team               Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, role])
+  @@index([teamId, order])
+}
+
+model TeamStoryBeat {
+  id           String          @id @default(cuid())
+  teamId       String
+  parentBeatId String?
+  order        Int
+  title        String          @default("")
+  description  String          @default("")
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  parentBeat   TeamStoryBeat?  @relation("TeamStoryBeatHierarchy", fields: [parentBeatId], references: [id], onDelete: SetNull)
+  childBeats   TeamStoryBeat[] @relation("TeamStoryBeatHierarchy")
+  team         Team            @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, order])
+  @@index([teamId, parentBeatId, order])
+}
+
+model TeamNote {
+  id        String      @id @default(cuid())
+  teamId    String
+  order     Int
+  tag       TeamNoteTag @default(session)
+  title     String      @default("")
+  body      String      @default("")
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  team      Team        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, order])
+}
+
+model TeamKnownFace {
+  id                  String                 @id @default(cuid())
+  teamId              String
+  order               Int
+  name                String                 @default("")
+  concept             String                 @default("")
+  faction             String                 @default("")
+  lastSeen            String                 @default("")
+  trustLevel          Int                    @default(3)
+  notes               String                 @default("")
+  portraitPath        String?
+  portraitAsset       TeamKnownFacePortrait?
+  promotedCharacterId String?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+  promotedCharacter   Character?             @relation("PromotedKnownFace", fields: [promotedCharacterId], references: [id], onDelete: SetNull)
+  team                Team                   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, order])
+}
+
+model TeamKnownFacePortrait {
+  knownFaceId String        @id
+  mimeType    String
+  data        Bytes
+  updatedAt   DateTime      @updatedAt
+  knownFace   TeamKnownFace @relation(fields: [knownFaceId], references: [id], onDelete: Cascade)
+}
+
+model TeamFactionTie {
+  id             String            @id @default(cuid())
+  teamId         String
+  order          Int
+  faction        String            @default("")
+  stance         TeamFactionStance @default(neutral)
+  heat           Int               @default(0)
+  leverageHolder String            @default("")
+  notes          String            @default("")
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  team           Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, order])
+}
+
+model CharacterRelationship {
+  id          String    @id @default(cuid())
+  characterId String
+  order       Int
+  targetName  String    @default("")
+  description String    @default("")
+  isBuddy     Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@index([characterId, order])
+}
+
+model CharacterTalent {
+  id          String       @id @default(cuid())
+  characterId String
+  order       Int
+  name        String       @default("")
+  source      TalentSource @default(other)
+  notes       String       @default("")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  character   Character    @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@index([characterId, order])
+}
+
+model CharacterWeapon {
+  id          String    @id @default(cuid())
+  characterId String
+  order       Int
+  presetId    String?
+  name        String    @default("")
+  bonus       Int       @default(0)
+  initiative  Int       @default(0)
+  damage      Int       @default(0)
+  crit        String    @default("")
+  range       String    @default("")
+  comments    String    @default("")
+  reloads     Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@index([characterId, order])
+}
+
+model CharacterGearItem {
+  id               String    @id @default(cuid())
+  characterId      String
+  order            Int
+  presetId         String?
+  name             String    @default("")
+  bonus            String    @default("")
+  comment          String    @default("")
+  quantity         Int       @default(1)
+  encumbranceUnits Int       @default(2)
+  isTiny           Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  character        Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@index([characterId, order])
+}
+
+model CharacterContact {
+  id          String    @id @default(cuid())
+  characterId String
+  order       Int
+  name        String    @default("")
+  concept     String    @default("")
+  notes       String    @default("")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@index([characterId, order])
+}

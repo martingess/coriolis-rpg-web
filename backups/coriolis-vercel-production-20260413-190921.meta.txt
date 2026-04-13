@@ -1,0 +1,6 @@
+source=vercel production
+project=coriolis-rpg-web
+captured_at=2026-04-13T19:09:21+02:00
+format=pg_dump custom
+postgres_major=17
+file=coriolis-vercel-production-20260413-190921.dump

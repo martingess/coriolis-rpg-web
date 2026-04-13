@@ -1,4 +1,6 @@
-import { RosterPage } from "@/app/roster-page";
+import { redirect } from "next/navigation";
+
+import { getCompactCharacterHref } from "@/lib/roster-routes";
 
 export const dynamic = "force-dynamic";
 
@@ -11,5 +13,5 @@ type CharacterPageProps = {
 export default async function CharacterPage({ params }: CharacterPageProps) {
   const { id } = await params;
 
-  return <RosterPage characterId={id} />;
+  redirect(getCompactCharacterHref(id));
 }

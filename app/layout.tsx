@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import { Exo_2, Marcellus_SC } from "next/font/google";
 
+import { AuthChrome } from "@/components/auth-chrome";
 import { I18nProvider } from "@/components/i18n-provider";
 
 import "./globals.css";
 
 const exo = Exo_2({
   variable: "--font-exo",
-  subsets: ["latin"],
+  subsets: ["latin", "cyrillic"],
 });
 
 const marcellus = Marcellus_SC({
@@ -29,6 +30,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${exo.variable} ${marcellus.variable} antialiased`}>
+        <AuthChrome />
         <I18nProvider>{children}</I18nProvider>
       </body>
     </html>

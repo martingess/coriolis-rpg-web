@@ -17,6 +17,7 @@ import { useLocaleText } from "@/lib/use-locale-text";
 type StoryBeatField = "title" | "description" | "parentBeatId";
 
 type TeamStoryTimelineProps = {
+  className?: string;
   storyBeats: TeamStoryBeatRecord[];
   onCreateBeat: (parentBeatId?: string) => void;
   onRemoveBeat: (beatId: string) => void;
@@ -407,6 +408,7 @@ function StoryTimelineBranch({
 }
 
 export function TeamStoryTimeline({
+  className = "",
   storyBeats,
   onCreateBeat,
   onRemoveBeat,
@@ -464,7 +466,7 @@ export function TeamStoryTimeline({
         id="team-timeline"
         title={lt("Timeline", "Хронологія")}
         eyebrow={lt("Major Events", "Ключові події")}
-        className="xl:col-span-2"
+        className={`xl:col-span-2 ${className}`}
         actions={
           <button type="button" className="coriolis-chip" onClick={() => onCreateBeat()}>
             {lt("Add Story Point", "Додати подію")}

@@ -19,6 +19,8 @@ import type {
   TeamScalarField,
 } from "@/lib/team-types";
 
+type TeamClient = PrismaClient | Prisma.TransactionClient;
+
 const teamInclude = {
   crewPositions: {
     orderBy: {
@@ -146,6 +148,42 @@ function serializeTeam(team: TeamWithRelations): TeamRecord {
   };
 }
 
+function createBlankTeamRecord(): TeamRecord {
+  return {
+    id: "",
+    name: "",
+    manifesto: "",
+    story: "",
+    groupConcept: "",
+    groupTalent: "",
+    patron: "",
+    nemesis: "",
+    shipName: "",
+    shipType: "",
+    shipClass: "",
+    shipProblem: "",
+    shipDebt: 0,
+    shipUpgrades: "",
+    currentGoal: "",
+    nextLead: "",
+    reward: "",
+    deadline: "",
+    unresolvedMystery: "",
+    crewPositions: teamCrewRoleValues.map((role, index) => ({
+      id: `draft-${role}`,
+      order: index + 1,
+      role,
+      primaryCharacterId: null,
+      backupCharacterId: null,
+      notes: "",
+    })),
+    storyBeats: [],
+    notes: [],
+    knownFaces: [],
+    factionTies: [],
+  };
+}
+
 function getDefaultCrewPositions(): Array<{
   order: number;
   role: PrismaTeamCrewRole;
@@ -159,7 +197,7 @@ function getDefaultCrewPositions(): Array<{
   ];
 }
 
-async function getTeamOrThrow(teamId: string, client: PrismaClient = prisma) {
+async function getTeamOrThrow(teamId: string, client: TeamClient = prisma) {
   const team = await client.team.findUnique({
     where: {
       id: teamId,
@@ -174,7 +212,7 @@ async function getTeamOrThrow(teamId: string, client: PrismaClient = prisma) {
   return team;
 }
 
-async function ensureTeam(client: PrismaClient = prisma) {
+async function ensureTeam(client: TeamClient = prisma) {
   let team = await client.team.findFirst({
     include: teamInclude,
     orderBy: {
@@ -230,7 +268,7 @@ function normalizeOptionalId(rawValue: string | number) {
 async function getHighestOrder(
   teamId: string,
   kind: Exclude<TeamRepeaterKind, "crewPosition">,
-  client: PrismaClient,
+  client: TeamClient,
   input: {
     parentBeatId?: string | null;
   } = {},
@@ -284,7 +322,7 @@ async function getHighestOrder(
 
 async function parseOptionalCharacterId(
   rawValue: string | number,
-  client: PrismaClient,
+  client: TeamClient,
 ) {
   const nextId = normalizeOptionalId(rawValue);
 
@@ -311,7 +349,7 @@ async function parseOptionalCharacterId(
 async function parseOptionalStoryBeatParentId(
   rawValue: string | number,
   teamId: string,
-  client: PrismaClient,
+  client: TeamClient,
   storyBeatId?: string,
 ) {
   const nextParentBeatId = normalizeOptionalId(rawValue);
@@ -365,7 +403,7 @@ async function parseOptionalStoryBeatParentId(
   return parentBeat.id;
 }
 
-async function getUniqueCharacterName(baseName: string, client: PrismaClient) {
+async function getUniqueCharacterName(baseName: string, client: TeamClient) {
   const trimmed = baseName.trim();
 
   if (!trimmed) {
@@ -394,8 +432,23 @@ async function getUniqueCharacterName(baseName: string, client: PrismaClient) {
   return candidate;
 }
 
-export async function getTeam(client: PrismaClient = prisma) {
+export async function getTeam(client: TeamClient = prisma) {
   const team = await ensureTeam(client);
+  return serializeTeam(team);
+}
+
+export async function getTeamReadonly(client: TeamClient = prisma) {
+  const team = await client.team.findFirst({
+    include: teamInclude,
+    orderBy: {
+      createdAt: "asc",
+    },
+  });
+
+  if (!team) {
+    return createBlankTeamRecord();
+  }
+
   return serializeTeam(team);
 }
 
@@ -403,7 +456,7 @@ export async function updateTeamField(
   teamId: string,
   field: TeamScalarField,
   rawValue: string | number,
-  client: PrismaClient = prisma,
+  client: TeamClient = prisma,
 ) {
   await ensureTeam(client);
 
@@ -434,7 +487,7 @@ export async function createTeamRepeaterItem(
   input: {
     parentBeatId?: string | null;
   } = {},
-  client: PrismaClient = prisma,
+  client: TeamClient = prisma,
 ) {
   await ensureTeam(client);
   const parentBeatId =
@@ -490,7 +543,7 @@ export async function updateTeamRepeaterField(
   id: string,
   field: string,
   value: string | number,
-  client: PrismaClient = prisma,
+  client: TeamClient = prisma,
 ) {
   let teamId = "";
 
@@ -666,7 +719,7 @@ export async function updateTeamRepeaterField(
 export async function deleteTeamRepeaterItem(
   kind: Exclude<TeamRepeaterKind, "crewPosition">,
   id: string,
-  client: PrismaClient = prisma,
+  client: TeamClient = prisma,
 ) {
   let teamId = "";
 
@@ -718,7 +771,7 @@ export async function deleteTeamRepeaterItem(
 
 export async function promoteKnownFaceToCharacter(
   knownFaceId: string,
-  client: PrismaClient = prisma,
+  client: TeamClient = prisma,
 ) {
   const knownFace = await client.teamKnownFace.findUniqueOrThrow({
     where: {
@@ -782,7 +835,7 @@ export async function promoteKnownFaceToCharacter(
 export async function updateKnownFacePortraitPath(
   knownFaceId: string,
   portraitPath: string | null,
-  client: PrismaClient = prisma,
+  client: TeamClient = prisma,
 ) {
   const knownFace = await client.teamKnownFace.update({
     where: {

@@ -250,7 +250,7 @@ async function getCharacterOrThrow(characterId: string, client: RosterClient = p
 
 async function getOtherCharacterNames(
   characterId: string,
-  client: PrismaClient = prisma,
+  client: RosterClient = prisma,
 ) {
   const otherCharacters = await client.character.findMany({
     where: {
@@ -272,7 +272,7 @@ async function getOtherCharacterNames(
 async function normalizeRelationshipTargetName(
   characterId: string,
   targetName: string,
-  client: PrismaClient = prisma,
+  client: RosterClient = prisma,
   relationshipIdToIgnore?: string,
 ) {
   const trimmed = targetName.trim();
@@ -311,7 +311,7 @@ async function normalizeRelationshipTargetName(
   return trimmed;
 }
 
-async function clearInvalidBuddySelections(client: PrismaClient = prisma) {
+async function clearInvalidBuddySelections(client: RosterClient = prisma) {
   const characters = await client.character.findMany({
     orderBy: {
       createdAt: "asc",
@@ -371,7 +371,7 @@ async function clearInvalidBuddySelections(client: PrismaClient = prisma) {
 
 async function createSeedCharacter(
   sample: (typeof seededCharacters)[number],
-  client: PrismaClient,
+  client: RosterClient,
 ) {
   const derived = calculateConditionTrackState({
     strength: sample.strength,
@@ -458,7 +458,7 @@ async function createSeedCharacter(
   });
 }
 
-export async function seedRosterIfEmpty(client: PrismaClient = prisma) {
+export async function seedRosterIfEmpty(client: RosterClient = prisma) {
   const count = await client.character.count();
 
   if (count > 0) {
@@ -470,10 +470,21 @@ export async function seedRosterIfEmpty(client: PrismaClient = prisma) {
   }
 }
 
-export async function getRoster(client: PrismaClient = prisma) {
+export async function getRoster(client: RosterClient = prisma) {
   await seedRosterIfEmpty(client);
   await clearInvalidBuddySelections(client);
 
+  const characters = await client.character.findMany({
+    include: characterInclude,
+    orderBy: {
+      createdAt: "asc",
+    },
+  });
+
+  return characters.map(serializeCharacter);
+}
+
+export async function getRosterReadonly(client: RosterClient = prisma) {
   const characters = await client.character.findMany({
     include: characterInclude,
     orderBy: {
@@ -515,7 +526,7 @@ function getBlankCharacterData(sequence: number): Prisma.CharacterCreateInput {
   };
 }
 
-export async function createCharacter(client: PrismaClient = prisma) {
+export async function createCharacter(client: RosterClient = prisma) {
   const count = await client.character.count();
   const character = await client.character.create({
     data: getBlankCharacterData(count + 1),
@@ -525,7 +536,7 @@ export async function createCharacter(client: PrismaClient = prisma) {
   return serializeCharacter(character);
 }
 
-export async function renameCharacter(characterId: string, name: string, client: PrismaClient = prisma) {
+export async function renameCharacter(characterId: string, name: string, client: RosterClient = prisma) {
   const trimmed = name.trim();
   const existingCharacter = await client.character.findUnique({
     where: {
@@ -542,30 +553,29 @@ export async function renameCharacter(characterId: string, name: string, client:
 
   const nextName = trimmed.length > 0 ? trimmed : "Unnamed Horizoner";
 
-  const [, character] = await client.$transaction([
-    client.characterRelationship.updateMany({
-      where: {
-        targetName: existingCharacter.name,
-      },
-      data: {
-        targetName: nextName,
-      },
-    }),
-    client.character.update({
-      where: {
-        id: characterId,
-      },
-      data: {
-        name: nextName,
-      },
-      include: characterInclude,
-    }),
-  ]);
+  await client.characterRelationship.updateMany({
+    where: {
+      targetName: existingCharacter.name,
+    },
+    data: {
+      targetName: nextName,
+    },
+  });
+
+  const character = await client.character.update({
+    where: {
+      id: characterId,
+    },
+    data: {
+      name: nextName,
+    },
+    include: characterInclude,
+  });
 
   return serializeCharacter(character);
 }
 
-export async function deleteCharacter(characterId: string, client: PrismaClient = prisma) {
+export async function deleteCharacter(characterId: string, client: RosterClient = prisma) {
   const existingCharacter = await client.character.findUnique({
     where: {
       id: characterId,
@@ -579,18 +589,17 @@ export async function deleteCharacter(characterId: string, client: PrismaClient 
     throw new Error(`Character ${characterId} not found.`);
   }
 
-  await client.$transaction([
-    client.characterRelationship.deleteMany({
-      where: {
-        targetName: existingCharacter.name,
-      },
-    }),
-    client.character.delete({
-      where: {
-        id: characterId,
-      },
-    }),
-  ]);
+  await client.characterRelationship.deleteMany({
+    where: {
+      targetName: existingCharacter.name,
+    },
+  });
+
+  await client.character.delete({
+    where: {
+      id: characterId,
+    },
+  });
 
   const remaining = await client.character.findMany({
     include: characterInclude,
@@ -720,7 +729,7 @@ export async function updateCharacterField(
   characterId: string,
   field: CharacterScalarField,
   rawValue: string | number,
-  client: PrismaClient = prisma,
+  client: RosterClient = prisma,
 ) {
   const existing = await client.character.findUnique({
     where: {
@@ -827,7 +836,7 @@ export async function updateCharacterField(
 async function getNextOrder(
   characterId: string,
   kind: RepeaterKind,
-  client: PrismaClient,
+  client: RosterClient,
 ) {
   switch (kind) {
     case "relationship":
@@ -851,7 +860,7 @@ export async function createRepeaterItem(
   options?: {
     relationshipTargetName?: string;
   },
-  client: PrismaClient = prisma,
+  client: RosterClient = prisma,
 ) {
   const order = (await getNextOrder(characterId, kind, client)) + 1;
 
@@ -902,29 +911,27 @@ export async function createConditionModifier(
     target: string;
     value: number | string;
   },
-  client: PrismaClient = prisma,
+  client: RosterClient = prisma,
 ) {
-  return client.$transaction(async (tx) => {
-    const order =
-      (await tx.characterConditionModifier.count({
-        where: {
-          characterId: input.characterId,
-        },
-      })) + 1;
-
-    await tx.characterConditionModifier.create({
-      data: {
+  const order =
+    (await client.characterConditionModifier.count({
+      where: {
         characterId: input.characterId,
-        order,
-        target: parseConditionModifierTarget(input.target),
-        name: input.name.trim(),
-        description: input.description.trim(),
-        value: parseConditionModifierValue(input.value),
       },
-    });
+    })) + 1;
 
-    return serializeCharacter(await refreshCharacterConditionState(input.characterId, tx));
+  await client.characterConditionModifier.create({
+    data: {
+      characterId: input.characterId,
+      order,
+      target: parseConditionModifierTarget(input.target),
+      name: input.name.trim(),
+      description: input.description.trim(),
+      value: parseConditionModifierValue(input.value),
+    },
   });
+
+  return serializeCharacter(await refreshCharacterConditionState(input.characterId, client));
 }
 
 export async function updateConditionModifier(
@@ -935,63 +942,59 @@ export async function updateConditionModifier(
     target: string;
     value: number | string;
   },
-  client: PrismaClient = prisma,
+  client: RosterClient = prisma,
 ) {
-  return client.$transaction(async (tx) => {
-    const existing = await tx.characterConditionModifier.findUnique({
-      where: { id },
-      select: {
-        characterId: true,
-      },
-    });
-
-    if (!existing) {
-      throw new Error(`Condition modifier ${id} not found.`);
-    }
-
-    await tx.characterConditionModifier.update({
-      where: { id },
-      data: {
-        target: parseConditionModifierTarget(input.target),
-        name: input.name.trim(),
-        description: input.description.trim(),
-        value: parseConditionModifierValue(input.value),
-      },
-    });
-
-    return serializeCharacter(await refreshCharacterConditionState(existing.characterId, tx));
+  const existing = await client.characterConditionModifier.findUnique({
+    where: { id },
+    select: {
+      characterId: true,
+    },
   });
+
+  if (!existing) {
+    throw new Error(`Condition modifier ${id} not found.`);
+  }
+
+  await client.characterConditionModifier.update({
+    where: { id },
+    data: {
+      target: parseConditionModifierTarget(input.target),
+      name: input.name.trim(),
+      description: input.description.trim(),
+      value: parseConditionModifierValue(input.value),
+    },
+  });
+
+  return serializeCharacter(await refreshCharacterConditionState(existing.characterId, client));
 }
 
 export async function deleteConditionModifier(
   id: string,
-  client: PrismaClient = prisma,
+  client: RosterClient = prisma,
 ) {
-  return client.$transaction(async (tx) => {
-    const existing = await tx.characterConditionModifier.findUnique({
-      where: { id },
-      select: {
-        characterId: true,
-      },
-    });
-
-    if (!existing) {
-      throw new Error(`Condition modifier ${id} not found.`);
-    }
-
-    await tx.characterConditionModifier.delete({
-      where: { id },
-    });
-
-    return serializeCharacter(await refreshCharacterConditionState(existing.characterId, tx));
+  const existing = await client.characterConditionModifier.findUnique({
+    where: { id },
+    select: {
+      characterId: true,
+    },
   });
+
+  if (!existing) {
+    throw new Error(`Condition modifier ${id} not found.`);
+  }
+
+  await client.characterConditionModifier.delete({
+    where: { id },
+  });
+
+  return serializeCharacter(await refreshCharacterConditionState(existing.characterId, client));
 }
 
 export async function addInventoryPreset(
   characterId: string,
   kind: InventoryKind,
   presetId: string,
-  client: PrismaClient = prisma,
+  client: RosterClient = prisma,
 ) {
   const preset = inventoryCatalog.find(
     (entry) => entry.id === presetId && entry.kind === kind,
@@ -1043,7 +1046,7 @@ export async function updateRepeaterField(
   id: string,
   field: string,
   value: string | number,
-  client: PrismaClient = prisma,
+  client: RosterClient = prisma,
 ) {
   let characterId = "";
 
@@ -1167,7 +1170,7 @@ export async function updateRepeaterField(
 export async function deleteRepeaterItem(
   kind: RepeaterKind,
   id: string,
-  client: PrismaClient = prisma,
+  client: RosterClient = prisma,
 ) {
   let characterId = "";
 
@@ -1230,7 +1233,7 @@ export async function deleteRepeaterItem(
 export async function setBuddy(
   characterId: string,
   relationshipId: string,
-  client: PrismaClient = prisma,
+  client: RosterClient = prisma,
 ) {
   const relationship = await client.characterRelationship.findUniqueOrThrow({
     where: {
@@ -1253,24 +1256,23 @@ export async function setBuddy(
     relationship.id,
   );
 
-  await client.$transaction([
-    client.characterRelationship.updateMany({
-      where: {
-        characterId,
-      },
-      data: {
-        isBuddy: false,
-      },
-    }),
-    client.characterRelationship.update({
-      where: {
-        id: relationshipId,
-      },
-      data: {
-        isBuddy: true,
-      },
-    }),
-  ]);
+  await client.characterRelationship.updateMany({
+    where: {
+      characterId,
+    },
+    data: {
+      isBuddy: false,
+    },
+  });
+
+  await client.characterRelationship.update({
+    where: {
+      id: relationshipId,
+    },
+    data: {
+      isBuddy: true,
+    },
+  });
 
   return serializeCharacter(await getCharacterOrThrow(characterId, client));
 }
@@ -1278,7 +1280,7 @@ export async function setBuddy(
 export async function updatePortraitPath(
   characterId: string,
   portraitPath: string | null,
-  client: PrismaClient = prisma,
+  client: RosterClient = prisma,
 ) {
   const updated = await client.character.update({
     where: {

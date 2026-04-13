@@ -94,9 +94,13 @@ import {
   COMBAT_HREF,
   SHIP_COMBAT_HREF,
   TEAM_HREF,
+  TEAM_FULL_HREF,
   TEAM_PANEL_ID,
+  getFullCharacterHref,
   getCharacterHref,
+  getCompactCharacterHref,
   getPanelIdFromPathname,
+  isFullSheetPath,
 } from "@/lib/roster-routes";
 import {
   defaultLanguage,
@@ -1319,6 +1323,7 @@ export function RosterApp({
   const latestConfirmedSkillRequestIds = useRef<Record<string, number>>({});
 
   const selectedPanelId = getPanelIdFromPathname(pathname);
+  const isFullSheetMode = isFullSheetPath(pathname);
   const isTeamSelected = selectedPanelId === TEAM_PANEL_ID;
   const visibleCharacters = characters.map((character) =>
     applyOptimisticSkillEdits(character, pendingSkillEdits[character.id]),
@@ -1398,9 +1403,17 @@ export function RosterApp({
     }
 
     if (!selectedCharacter) {
-      router.replace(characters[0] ? getCharacterHref(characters[0].id) : TEAM_HREF);
+      router.replace(
+        characters[0]
+          ? isFullSheetMode
+            ? getFullCharacterHref(characters[0].id)
+            : getCharacterHref(characters[0].id)
+          : isFullSheetMode
+            ? TEAM_FULL_HREF
+            : TEAM_HREF,
+      );
     }
-  }, [characters, isTeamSelected, router, selectedCharacter]);
+  }, [characters, isFullSheetMode, isTeamSelected, router, selectedCharacter]);
 
   useEffect(() => {
     setActiveSectionId(allQuickNavSections[0].id);
@@ -1554,7 +1567,14 @@ export function RosterApp({
   }
 
   function navigateToPanel(panelId: string, mode: "push" | "replace" = "push") {
-    const href = panelId === TEAM_PANEL_ID ? TEAM_HREF : getCharacterHref(panelId);
+    const href =
+      panelId === TEAM_PANEL_ID
+        ? isFullSheetMode
+          ? TEAM_FULL_HREF
+          : TEAM_HREF
+        : isFullSheetMode
+          ? getFullCharacterHref(panelId)
+          : getCharacterHref(panelId);
 
     if (mode === "replace") {
       router.replace(href);
@@ -2150,6 +2170,23 @@ export function RosterApp({
 
   const headerActionButtons = (
     <>
+      {selectedCharacter ? (
+        <button
+          type="button"
+          className="coriolis-chip"
+          onClick={() => router.push(getCompactCharacterHref(selectedCharacter.id))}
+        >
+          {lt("Compact View", "Компактний вигляд")}
+        </button>
+      ) : isTeamSelected ? (
+        <button
+          type="button"
+          className="coriolis-chip"
+          onClick={() => router.push(TEAM_HREF)}
+        >
+          {lt("Compact View", "Компактний вигляд")}
+        </button>
+      ) : null}
       <button
         type="button"
         className="coriolis-chip"
@@ -2282,6 +2319,16 @@ export function RosterApp({
                           </p>
                         </div>
                         <div className="space-y-2">
+                          {selectedCharacter ? (
+                            <MobileMenuItem
+                              icon="chart"
+                              onClick={() => {
+                                closeMobileMenu();
+                                router.push(getCompactCharacterHref(selectedCharacter.id));
+                              }}
+                              title={lt("Compact View", "Компактний вигляд")}
+                            />
+                          ) : null}
                           <MobileMenuItem
                             icon="plus"
                             onClick={() => {
